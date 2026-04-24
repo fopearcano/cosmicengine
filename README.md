@@ -43,3 +43,18 @@ CosmicEngine is a data-driven, physics-grounded, AI-assisted cosmic perception e
 - Demo at `examples/perception_warp_demo.py` writes
   `output_warp_{1,5,50}.ppm`.
 - Still deterministic and AI-free.
+
+## Phase 5: AI-assisted perception
+
+- AI warp layer introduced (`cosmic_engine.ai`): `AIWarpModel` base
+  class defines the pluggable interface (`predict_direction`,
+  `predict_brightness`, `predict_color`, `confidence`); future
+  PyTorch / ONNX / JAX models will implement it.
+- Currently ships with a deterministic placeholder
+  (`SimpleNeuralWarp`) that stands in for a real model so the rest of
+  the pipeline is exercisable today.
+- `transform_photon_field(samples, observer, ai_model=None)` routes to
+  the deterministic path when `ai_model` is `None`. The deterministic
+  fallback is always available and remains the default.
+- Demo at `examples/ai_warp_demo.py` writes
+  `output_ai_{off,on,extreme}.ppm`.

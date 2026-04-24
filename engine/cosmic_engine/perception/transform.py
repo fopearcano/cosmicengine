@@ -1,12 +1,22 @@
-"""Per-photon perception transforms driven by an :class:`ObserverState`."""
+"""Per-photon perception transforms driven by an :class:`ObserverState`.
+
+The deterministic path is always available. An optional
+:class:`~cosmic_engine.ai.base.AIWarpModel` can replace any of the three
+per-sample transforms; passing ``ai_model=None`` falls back to the
+deterministic logic.
+"""
 
 from __future__ import annotations
 
 import math
+from typing import TYPE_CHECKING
 
 from cosmic_engine.core.vector import Vector3
 from cosmic_engine.perception.observer import ObserverState
 from cosmic_engine.rendering.photon_field import PhotonSample
+
+if TYPE_CHECKING:
+    from cosmic_engine.ai.base import AIWarpModel
 
 
 # Ceilings that keep extreme warp_factor values from producing infinities.
@@ -96,13 +106,31 @@ def apply_color_warp(
 def transform_photon_sample(
     sample: PhotonSample,
     observer: ObserverState,
+    ai_model: "AIWarpModel | None" = None,
 ) -> PhotonSample:
-    """Return a new :class:`PhotonSample` with all perception effects applied."""
-    new_direction = apply_direction_warp(sample.direction, observer)
-    new_brightness = apply_brightness_warp(
-        sample.apparent_brightness, sample.direction, observer
-    )
-    new_color = apply_color_warp(sample.color_rgb, sample.direction, observer)
+    """Return a new :class:`PhotonSample` with perception effects applied.
+
+    If ``ai_model`` is ``None`` the deterministic transforms are used.
+    Otherwise the model's ``predict_*`` methods replace each per-sample
+    step. The original sample direction is passed to every model call
+    so model predictions are not coupled to each other's outputs.
+    """
+    if ai_model is None:
+        new_direction = apply_direction_warp(sample.direction, observer)
+        new_brightness = apply_brightness_warp(
+            sample.apparent_brightness, sample.direction, observer
+        )
+        new_color = apply_color_warp(
+            sample.color_rgb, sample.direction, observer
+        )
+    else:
+        new_direction = ai_model.predict_direction(sample.direction, observer)
+        new_brightness = ai_model.predict_brightness(
+            sample.apparent_brightness, sample.direction, observer
+        )
+        new_color = ai_model.predict_color(
+            sample.color_rgb, sample.direction, observer
+        )
     return PhotonSample(
         object_id=sample.object_id,
         name=sample.name,
@@ -118,6 +146,7 @@ def transform_photon_sample(
 def transform_photon_field(
     samples: list[PhotonSample],
     observer: ObserverState,
+    ai_model: "AIWarpModel | None" = None,
 ) -> list[PhotonSample]:
     """Apply :func:`transform_photon_sample` to every sample in the list."""
-    return [transform_photon_sample(s, observer) for s in samples]
+    return [transform_photon_sample(s, observer, ai_model) for s in samples]
