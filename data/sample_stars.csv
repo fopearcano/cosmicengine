@@ -1,0 +1,9 @@
+id,name,ra_deg,dec_deg,distance_ly,apparent_magnitude,spectral_class
+sol,Sun,0,0,0,-26.74,G2V
+alpha_centauri,Alpha Centauri,219.9,-60.8,4.37,-0.27,G2V
+sirius,Sirius,101.3,-16.7,8.6,-1.46,A1V
+betelgeuse,Betelgeuse,88.8,7.4,548,0.42,M1Ia
+vega,Vega,279.2,38.8,25,0.03,A0V
+rigel,Rigel,78.6,-8.2,860,0.13,B8Ia
+procyon,Procyon,114.8,5.2,11.5,0.34,F5IV
+polaris,Polaris,37.9,89.3,433,1.98,F7Ib
