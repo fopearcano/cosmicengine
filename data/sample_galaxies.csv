@@ -1,0 +1,8 @@
+id,name,x_m,y_m,z_m,redshift_z,apparent_magnitude,morphology
+andromeda,Andromeda,2.4e22,1.2e22,0.5e22,-0.001,3.44,spiral
+triangulum,Triangulum,2.8e22,1.1e22,0.7e22,-0.0006,5.72,spiral
+whirlpool,Whirlpool,2.3e23,2.9e23,4.5e23,0.002,8.4,spiral
+sombrero,Sombrero,2.8e23,-1.2e23,3.8e23,0.003,8.0,spiral
+pinwheel,Pinwheel,1.5e23,1.8e23,1.2e23,0.0008,7.86,spiral
+centaurus_a,Centaurus A,1.1e23,-2.2e23,-0.9e23,0.00183,6.84,elliptical
+virgo_a,Virgo A,4.8e23,3.1e23,2.7e23,0.00428,8.49,elliptical

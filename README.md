@@ -90,3 +90,26 @@ CosmicEngine is a data-driven, physics-grounded, AI-assisted cosmic perception e
   lives only on the scalar path for now.
 - Demo at `examples/vectorized_warp_demo.py` writes
   `output_vectorized_warp.ppm`.
+
+## Phase 8: Galaxy point clouds and density fields
+
+- CosmicEngine now supports DESI-like galaxy point clouds.
+  `cosmic_engine.cosmos.galaxy` adds `GalaxyProperties` +
+  `create_galaxy_object` (galaxies carry morphology, redshift,
+  magnitude, color index, stellar/halo mass in metadata).
+- CSV ingestion via `cosmic_engine.data.galaxy_catalog.load_galaxy_catalog`
+  (expects `id,name,x_m,y_m,z_m,redshift_z,apparent_magnitude,morphology`);
+  `generate_synthetic_galaxy_catalog(count, radius_m, seed)` is a
+  deterministic filamentary placeholder for future DESI ingestion —
+  **not scientifically accurate**.
+- `GalaxyFieldBatch` + `build_galaxy_field_batch` project galaxies
+  into a vectorized rendering frame with redshift-derived colors.
+  `render_galaxy_batch_to_ppm` dots them into a PPM.
+- `galaxy_batch_to_density_grid` bins positions into a
+  `(G, G, G)` cube normalized to `[0, 1]` — a scaffold for future AI
+  super-resolution / reconstruction.
+- Real DESI ingestion is **not** implemented yet; no real data is
+  downloaded, no cosmological distance calculation is performed.
+- Sample data at `data/sample_galaxies.csv` (7 Local-Group / nearby
+  galaxies); demo at `examples/synthetic_galaxy_cloud_demo.py` writes
+  `output_synthetic_galaxies.ppm`.

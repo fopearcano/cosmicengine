@@ -17,6 +17,7 @@ import math
 from cosmic_engine.core.vector import Vector3
 from cosmic_engine.rendering.photon_field import PhotonSample
 from cosmic_engine.rendering.simple_camera import SimpleCamera
+from cosmic_engine.rendering.vectorized_galaxy_field import GalaxyFieldBatch
 from cosmic_engine.rendering.vectorized_photon_field import (
     PhotonFieldBatch,
     photon_batch_to_samples,
@@ -166,4 +167,48 @@ def render_photon_batch_to_ppm(
     """
     render_photon_field_to_ppm(
         photon_batch_to_samples(batch), camera, output_path
+    )
+
+
+def _galaxy_batch_to_samples(batch: GalaxyFieldBatch) -> list[PhotonSample]:
+    samples: list[PhotonSample] = []
+    for i in range(len(batch)):
+        r, g, b = batch.colors_rgb[i]
+        samples.append(
+            PhotonSample(
+                object_id=batch.object_ids[i],
+                name=batch.names[i],
+                object_type="galaxy",
+                direction=Vector3(
+                    float(batch.directions[i, 0]),
+                    float(batch.directions[i, 1]),
+                    float(batch.directions[i, 2]),
+                ),
+                distance_m=float(batch.distances_m[i]),
+                apparent_brightness=float(batch.brightness[i]),
+                color_rgb=(
+                    max(0, min(255, int(round(float(r))))),
+                    max(0, min(255, int(round(float(g))))),
+                    max(0, min(255, int(round(float(b))))),
+                ),
+                truth_level=batch.truth_levels[i],
+            )
+        )
+    return samples
+
+
+def render_galaxy_batch_to_ppm(
+    batch: GalaxyFieldBatch,
+    camera: SimpleCamera,
+    output_path: str,
+) -> None:
+    """Rasterize a :class:`GalaxyFieldBatch` as dots on a black background.
+
+    Colors already encode redshift (via
+    :mod:`cosmic_engine.rendering.vectorized_galaxy_field`), so this
+    delegates to the photon PPM writer without additional per-sample
+    transformation.
+    """
+    render_photon_field_to_ppm(
+        _galaxy_batch_to_samples(batch), camera, output_path
     )
