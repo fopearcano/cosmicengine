@@ -74,3 +74,19 @@ CosmicEngine is a data-driven, physics-grounded, AI-assisted cosmic perception e
   authoring library, not needed at runtime).
 - Demo at `examples/onnx_warp_demo.py` writes
   `output_onnx_{off,simple,real}.ppm`.
+
+## Phase 7: Vectorized pipeline
+
+- NumPy batch photon-field path added (`PhotonFieldBatch`,
+  `build_star_photon_field_batch`, `transform_photon_field_batch`,
+  `render_photon_batch_to_ppm`), plus `cosmic_engine.core.vector_batch`
+  helpers for `(N, 3)` array conversion, normalization, distances, and
+  clamping.
+- Prepares the engine for large catalogs and future GPU acceleration;
+  on a 10k-star synthetic catalog the deterministic transform runs
+  ~30× faster than the scalar path.
+- The scalar `PhotonSample` pipeline is untouched and remains the
+  reference implementation; AI / ONNX support remains optional and
+  lives only on the scalar path for now.
+- Demo at `examples/vectorized_warp_demo.py` writes
+  `output_vectorized_warp.ppm`.

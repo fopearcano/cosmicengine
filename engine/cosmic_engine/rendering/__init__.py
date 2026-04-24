@@ -11,16 +11,28 @@ Phase 3 contribution: a deliberately tiny pipeline that turns a list of
 No GPU, no AI, no relativistic effects, no third-party libraries.
 """
 
-from cosmic_engine.rendering.image_export import render_photon_field_to_ppm
+from cosmic_engine.rendering.image_export import (
+    render_photon_batch_to_ppm,
+    render_photon_field_to_ppm,
+)
 from cosmic_engine.rendering.photon_field import (
     PhotonSample,
     build_star_photon_field,
 )
 from cosmic_engine.rendering.simple_camera import SimpleCamera
+from cosmic_engine.rendering.vectorized_photon_field import (
+    PhotonFieldBatch,
+    build_star_photon_field_batch,
+    photon_batch_to_samples,
+)
 
 __all__ = [
+    "PhotonFieldBatch",
     "PhotonSample",
     "SimpleCamera",
     "build_star_photon_field",
+    "build_star_photon_field_batch",
+    "photon_batch_to_samples",
+    "render_photon_batch_to_ppm",
     "render_photon_field_to_ppm",
 ]

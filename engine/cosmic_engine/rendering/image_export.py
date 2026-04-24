@@ -17,6 +17,10 @@ import math
 from cosmic_engine.core.vector import Vector3
 from cosmic_engine.rendering.photon_field import PhotonSample
 from cosmic_engine.rendering.simple_camera import SimpleCamera
+from cosmic_engine.rendering.vectorized_photon_field import (
+    PhotonFieldBatch,
+    photon_batch_to_samples,
+)
 
 
 def _normalize(v: Vector3) -> Vector3:
@@ -146,3 +150,20 @@ def render_photon_field_to_ppm(
         for row in pixels:
             fh.write(" ".join(f"{r} {g} {b}" for r, g, b in row))
             fh.write("\n")
+
+
+def render_photon_batch_to_ppm(
+    batch: PhotonFieldBatch,
+    camera: SimpleCamera,
+    output_path: str,
+) -> None:
+    """Rasterize a :class:`PhotonFieldBatch` to a plain PPM.
+
+    Currently delegates to :func:`render_photon_field_to_ppm` via
+    :func:`photon_batch_to_samples`. The projection math is already
+    O(N); the meaningful wins from the batch path are in construction
+    and perception, which is where Phase 7 focuses.
+    """
+    render_photon_field_to_ppm(
+        photon_batch_to_samples(batch), camera, output_path
+    )

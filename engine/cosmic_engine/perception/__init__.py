@@ -17,6 +17,9 @@ from cosmic_engine.perception.transform import (
     transform_photon_field,
     transform_photon_sample,
 )
+from cosmic_engine.perception.vectorized_transform import (
+    transform_photon_field_batch,
+)
 
 __all__ = [
     "ObserverState",
@@ -24,5 +27,6 @@ __all__ = [
     "apply_color_warp",
     "apply_direction_warp",
     "transform_photon_field",
+    "transform_photon_field_batch",
     "transform_photon_sample",
 ]
