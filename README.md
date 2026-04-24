@@ -30,3 +30,16 @@ CosmicEngine is a data-driven, physics-grounded, AI-assisted cosmic perception e
   (`render_photon_field_to_ppm`); demo at `examples/render_starfield_demo.py`
   (writes `examples/output_starfield.ppm`).
 - Still no AI, GPU, relativity, or advanced rendering.
+
+## Phase 4: Perception transform
+
+- Deterministic, relativistic-inspired perception layer implemented
+  (`cosmic_engine.perception`): `ObserverState` carries pose, velocity,
+  and a `warp_factor` knob; `transform_photon_field` applies
+  aberration-like direction compression, beaming-like brightness
+  scaling, and a simple Doppler-flavored blue/red color shift.
+- `warp_factor >= 1.0` extends perception beyond the physical regime
+  for visualization; superluminal velocities are rejected.
+- Demo at `examples/perception_warp_demo.py` writes
+  `output_warp_{1,5,50}.ppm`.
+- Still deterministic and AI-free.
