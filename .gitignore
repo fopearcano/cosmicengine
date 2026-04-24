@@ -5,3 +5,6 @@ __pycache__/
 build/
 dist/
 .venv/
+
+# Generated example outputs
+examples/output_*.ppm
