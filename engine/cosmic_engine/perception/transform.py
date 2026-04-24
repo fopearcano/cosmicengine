@@ -124,13 +124,30 @@ def transform_photon_sample(
             sample.color_rgb, sample.direction, observer
         )
     else:
-        new_direction = ai_model.predict_direction(sample.direction, observer)
-        new_brightness = ai_model.predict_brightness(
-            sample.apparent_brightness, sample.direction, observer
-        )
-        new_color = ai_model.predict_color(
-            sample.color_rgb, sample.direction, observer
-        )
+        # Each AI call is guarded so a partial model failure still produces
+        # a valid sample via the deterministic fallback for that field.
+        try:
+            new_direction = ai_model.predict_direction(
+                sample.direction, observer
+            )
+        except Exception:
+            new_direction = apply_direction_warp(sample.direction, observer)
+        try:
+            new_brightness = ai_model.predict_brightness(
+                sample.apparent_brightness, sample.direction, observer
+            )
+        except Exception:
+            new_brightness = apply_brightness_warp(
+                sample.apparent_brightness, sample.direction, observer
+            )
+        try:
+            new_color = ai_model.predict_color(
+                sample.color_rgb, sample.direction, observer
+            )
+        except Exception:
+            new_color = apply_color_warp(
+                sample.color_rgb, sample.direction, observer
+            )
     return PhotonSample(
         object_id=sample.object_id,
         name=sample.name,

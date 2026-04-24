@@ -7,7 +7,9 @@ name = "cosmic_engine"
 version = "0.0.0"
 description = "Data-driven, physics-grounded, AI-assisted cosmic perception engine."
 requires-python = ">=3.11"
-dependencies = []
+dependencies = [
+    "onnxruntime>=1.17",
+]
 
 [tool.setuptools.packages.find]
 where = ["engine"]

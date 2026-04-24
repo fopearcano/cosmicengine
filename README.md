@@ -58,3 +58,19 @@ CosmicEngine is a data-driven, physics-grounded, AI-assisted cosmic perception e
   fallback is always available and remains the default.
 - Demo at `examples/ai_warp_demo.py` writes
   `output_ai_{off,on,extreme}.ppm`.
+
+## Phase 6: Real AI integration
+
+- ONNX Runtime (CPU-only) is now a dependency. Real AI models can be
+  loaded externally via `ONNXModelWrapper` (file-level) and consumed
+  through `ONNXWarpModel` (AIWarpModel interface).
+- The pipeline supports real inference end-to-end — the per-sample AI
+  path in `transform_photon_sample` is wrapped in try/except so any
+  AI failure falls back to the deterministic transform for that field;
+  the pipeline never crashes on a bad model.
+- A tiny mock model is bundled at `data/mock_warp_model.onnx` (9→7
+  linear graph) so the demo and tests run out of the box. Rebuild it
+  with `python scripts/build_mock_onnx_model.py` (requires the `onnx`
+  authoring library, not needed at runtime).
+- Demo at `examples/onnx_warp_demo.py` writes
+  `output_onnx_{off,simple,real}.ppm`.

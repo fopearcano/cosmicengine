@@ -13,5 +13,12 @@ exact same result as before this module existed.
 
 from cosmic_engine.ai.base import AIWarpModel
 from cosmic_engine.ai.neural_warp import SimpleNeuralWarp
+from cosmic_engine.ai.onnx_model import ONNXModelWrapper
+from cosmic_engine.ai.onnx_warp import ONNXWarpModel
 
-__all__ = ["AIWarpModel", "SimpleNeuralWarp"]
+__all__ = [
+    "AIWarpModel",
+    "ONNXModelWrapper",
+    "ONNXWarpModel",
+    "SimpleNeuralWarp",
+]
