@@ -3,13 +3,19 @@
 Each processor takes a :class:`PIL.Image.Image` and returns one of the
 same dimensions. The base class is a no-op so callers can wire it in
 unconditionally; concrete processors apply contrast, brightness, color
-shift, or chain other processors. No GPU, no neural networks; that's
-the next phase.
+shift, chain other processors, or wrap a fallible processor with safe
+error handling. Neural processors live in
+:mod:`ai_viewer.neural_postprocess`.
 """
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from PIL import Image, ImageEnhance
+
+if TYPE_CHECKING:
+    from ai_viewer.config import AIViewerConfig
 
 
 class FramePostProcessor:
@@ -78,3 +84,67 @@ class CompositeProcessor(FramePostProcessor):
         for proc in self.processors:
             image = proc.process(image)
         return image
+
+
+class SafeProcessor(FramePostProcessor):
+    """Wrap another processor; any exception falls back to the input image.
+
+    Records the most recent error in ``last_error`` so callers can
+    surface it once rather than logging on every frame.
+    """
+
+    def __init__(self, wrapped: FramePostProcessor) -> None:
+        self.wrapped = wrapped
+        self.last_error: str | None = None
+
+    def process(self, image: Image.Image) -> Image.Image:
+        try:
+            result = self.wrapped.process(image)
+        except Exception as e:  # pragma: no cover - defensive
+            self.last_error = str(e)
+            return image
+        # If the wrapped processor advertises its own last_error,
+        # surface it through SafeProcessor too.
+        inner_error = getattr(self.wrapped, "last_error", None)
+        if inner_error:
+            self.last_error = inner_error
+        return result
+
+
+def build_postprocessor_from_config(
+    config: "AIViewerConfig",
+) -> FramePostProcessor:
+    """Pick the processor implied by the viewer config.
+
+    - ``neural_model_path`` set: load an ONNX neural processor wrapped
+      in :class:`SafeProcessor`. The wrapper guarantees the viewer
+      never crashes on inference errors.
+    - else if ``enable_postprocess`` is true: a deterministic
+      :class:`CompositeProcessor` (gentle contrast + brightness boost).
+    - else: a pass-through :class:`FramePostProcessor`.
+    """
+    # Lazy import keeps onnxruntime out of the loader path until needed.
+    if config.neural_model_path:
+        from ai_viewer.neural_postprocess import ONNXFrameProcessor
+
+        size: tuple[int, int] | None = None
+        if (
+            config.neural_input_width is not None
+            and config.neural_input_height is not None
+        ):
+            size = (config.neural_input_width, config.neural_input_height)
+        return SafeProcessor(
+            ONNXFrameProcessor(
+                model_path=config.neural_model_path,
+                input_size=size,
+                normalize=config.neural_normalize,
+            )
+        )
+    if config.enable_postprocess:
+        return CompositeProcessor(
+            [
+                ContrastBoostProcessor(factor=1.2),
+                BrightnessProcessor(factor=1.1),
+            ]
+        )
+    return FramePostProcessor()

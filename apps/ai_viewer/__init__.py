@@ -9,12 +9,15 @@ replaced later by a Vulkan / WebGPU / neural renderer.
 from ai_viewer.client import RuntimeClient
 from ai_viewer.config import AIViewerConfig
 from ai_viewer.frame_buffer import FrameBuffer
+from ai_viewer.neural_postprocess import ONNXFrameProcessor
 from ai_viewer.postprocess import (
     BrightnessProcessor,
     ColorShiftProcessor,
     CompositeProcessor,
     ContrastBoostProcessor,
     FramePostProcessor,
+    SafeProcessor,
+    build_postprocessor_from_config,
 )
 from ai_viewer.viewer import AIViewer
 from ai_viewer.window import ViewerWindow
@@ -28,6 +31,9 @@ __all__ = [
     "ContrastBoostProcessor",
     "FrameBuffer",
     "FramePostProcessor",
+    "ONNXFrameProcessor",
     "RuntimeClient",
+    "SafeProcessor",
     "ViewerWindow",
+    "build_postprocessor_from_config",
 ]

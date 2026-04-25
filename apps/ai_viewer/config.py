@@ -20,6 +20,11 @@ class AIViewerConfig:
     enable_postprocess: bool = True
     max_fps: float = 30.0
 
+    neural_model_path: str | None = None
+    neural_input_width: int | None = None
+    neural_input_height: int | None = None
+    neural_normalize: bool = True
+
     def validate(self) -> None:
         """Raise :class:`ValueError` if any field is invalid."""
         if not self.server_host:
@@ -34,3 +39,15 @@ class AIViewerConfig:
             raise ValueError("output_directory must be a non-empty string")
         if self.max_fps <= 0.0:
             raise ValueError("max_fps must be positive")
+        # Neural input size: both dimensions or neither.
+        w_set = self.neural_input_width is not None
+        h_set = self.neural_input_height is not None
+        if w_set != h_set:
+            raise ValueError(
+                "neural_input_width and neural_input_height must both "
+                "be set or both be None"
+            )
+        if self.neural_input_width is not None and self.neural_input_width <= 0:
+            raise ValueError("neural_input_width must be positive")
+        if self.neural_input_height is not None and self.neural_input_height <= 0:
+            raise ValueError("neural_input_height must be positive")

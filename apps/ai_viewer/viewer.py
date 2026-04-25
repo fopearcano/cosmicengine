@@ -15,7 +15,11 @@ from PIL import Image
 from ai_viewer.client import RuntimeClient
 from ai_viewer.config import AIViewerConfig
 from ai_viewer.frame_buffer import FrameBuffer
-from ai_viewer.postprocess import FramePostProcessor
+from ai_viewer.postprocess import (
+    FramePostProcessor,
+    SafeProcessor,
+    build_postprocessor_from_config,
+)
 from ai_viewer.window import ViewerWindow
 
 
@@ -41,7 +45,9 @@ class AIViewer:
         self.config = config
         self.client = client
         self.window = window
-        self.postprocessor = postprocessor
+        if postprocessor is None:
+            postprocessor = build_postprocessor_from_config(config)
+        self.postprocessor: FramePostProcessor = postprocessor
         self.frame_buffer = FrameBuffer()
         self.last_scene_state: dict | None = None
         self.last_frame_path: str | None = None
@@ -50,6 +56,15 @@ class AIViewer:
         self._frame_times: deque[float] = deque(maxlen=30)
         self._min_frame_interval: float = 1.0 / max(config.max_fps, 1.0e-6)
         self._last_render_time: float = 0.0
+        self._postprocessor_warned: bool = False
+        print(f"AIViewer postprocessor: {self._describe_postprocessor()}")
+
+    def _describe_postprocessor(self) -> str:
+        """One-line label for the active processor (handles SafeProcessor wrap)."""
+        proc = self.postprocessor
+        if isinstance(proc, SafeProcessor):
+            return f"SafeProcessor({type(proc.wrapped).__name__})"
+        return type(proc).__name__
 
     # --- scene-state rendering -------------------------------------------
 
@@ -152,6 +167,7 @@ class AIViewer:
                 image = self.postprocessor.process(image)
             except Exception:
                 pass
+            self._maybe_warn_postprocessor()
         elif self.config.enable_ai_postprocess:
             self.frame_buffer = self.optional_ai_postprocess(self.frame_buffer)
             image = Image.fromarray(self.frame_buffer.pixels, mode="RGB")
@@ -211,3 +227,19 @@ class AIViewer:
             self.window.update()
         except Exception:
             pass
+
+    def _maybe_warn_postprocessor(self) -> None:
+        """Print a one-line warning if the postprocessor reports an error."""
+        if self._postprocessor_warned:
+            return
+        proc = self.postprocessor
+        error = getattr(proc, "last_error", None)
+        if not error and isinstance(proc, SafeProcessor):
+            error = getattr(proc.wrapped, "last_error", None)
+        if not error:
+            return
+        print(
+            f"AIViewer postprocessor warning: {error} "
+            "(falling back to passthrough for this frame)"
+        )
+        self._postprocessor_warned = True

@@ -396,3 +396,37 @@ CosmicEngine is a data-driven, physics-grounded, AI-assisted cosmic perception e
   applies a `Contrast → Brightness → ColorShift` chain, and prints
   FPS every five frames. Falls back to ASCII preview on headless
   hosts.
+
+## Phase 20: Neural postprocessing
+
+- `apps/ai_viewer/neural_postprocess.py` adds `ONNXFrameProcessor`,
+  a `FramePostProcessor` that loads an ONNX model on construction
+  and runs it on each frame. Image is resized to the model's input
+  size (or kept at its original size if `input_size=None`),
+  optionally normalized to `[0, 1]`, reshaped to `NCHW`, run through
+  `onnxruntime` (CPU provider), then converted back to PIL and
+  resized to the original dimensions. Missing files, invalid models,
+  and inference exceptions are caught and recorded in
+  `last_error`; the original image is returned unchanged.
+- `apps/ai_viewer/postprocess.py` adds `SafeProcessor` (wraps any
+  processor; on exception returns the input image and surfaces the
+  inner `last_error`) and `build_postprocessor_from_config` (selects
+  `SafeProcessor(ONNXFrameProcessor)` when `neural_model_path` is
+  set, a deterministic `Composite(Contrast + Brightness)` otherwise,
+  or a pass-through if `enable_postprocess` is false).
+- `AIViewer` auto-builds the postprocessor from config at
+  construction, prints the active processor name, and emits one
+  warning if the processor surfaces a `last_error` — not every frame.
+- New config fields: `neural_model_path`, `neural_input_width`,
+  `neural_input_height` (must be both set or both `None`),
+  `neural_normalize` (default `True`).
+- A bundled tiny identity model
+  (`data/neural_postprocess_identity.onnx`, 159 bytes,
+  `(1, 3, 32, 32)` Identity) makes the demo and tests exercise the
+  inference path without a real trained model. Rebuild with
+  `python scripts/build_neural_postprocess_model.py`.
+- No model training, no PyTorch, no OpenCV, no GPU — CPU
+  `onnxruntime` only, fully fallback-safe.
+- Demo at `examples/ai_viewer_neural_demo.py` runs deterministic by
+  default (`--model` omitted) or neural with `--model` and optional
+  `--neural-input-width/height`.
