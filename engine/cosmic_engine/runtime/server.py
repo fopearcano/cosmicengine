@@ -48,6 +48,8 @@ class RuntimeServer:
         self.running: bool = False
         self.last_frame_time: float | None = None
         self.connections: list[socket.socket] = []
+        # Per-connection observer_id filter (None = receives everything).
+        self._connection_observer_ids: dict[int, str | None] = {}
         self._lock = threading.Lock()
         self._sock: socket.socket | None = None
         self._accept_thread: threading.Thread | None = None
@@ -93,6 +95,7 @@ class RuntimeServer:
                 except OSError:
                     pass
             self.connections = []
+            self._connection_observer_ids.clear()
         for t in (self._accept_thread, self._tick_thread):
             if t is not None and t.is_alive():
                 t.join(timeout=2.0)
@@ -117,16 +120,30 @@ class RuntimeServer:
                 self.connections.append(conn)
 
     def run_loop(self) -> None:
-        """Main tick loop: step the runtime and broadcast each state."""
+        """Main tick loop: step the runtime and broadcast each state.
+
+        With observers registered on the runtime, each tick broadcasts
+        one ``reality_view`` message per observer (clients that
+        ``set_observer_filter`` an id only see their own). Otherwise
+        the tick broadcasts a single ``scene_state`` as before.
+        """
         period = 1.0 / self.tick_rate_hz
         while self.running:
             start = time.perf_counter()
-            try:
-                state = self.runtime.step(period)
-            except Exception:  # pragma: no cover - defensive
-                state = self.runtime.last_scene_state
-            if state is not None:
-                self.broadcast_state(state)
+            if len(self.runtime.observer_manager) > 0:
+                try:
+                    views = self.runtime.step_all_observers(period)
+                except Exception:  # pragma: no cover - defensive
+                    views = []
+                for view in views:
+                    self.broadcast_observer_view(view)
+            else:
+                try:
+                    state = self.runtime.step(period)
+                except Exception:  # pragma: no cover - defensive
+                    state = self.runtime.last_scene_state
+                if state is not None:
+                    self.broadcast_state(state)
             self.last_frame_time = time.time()
             elapsed = time.perf_counter() - start
             sleep_for = period - elapsed
@@ -152,17 +169,60 @@ class RuntimeServer:
         }
         self._send_message(message)
 
-    def _send_message(self, message: dict) -> None:
+    def broadcast_observer_view(self, view) -> None:
+        """Send a per-observer ``reality_view`` to filtered subscribers.
+
+        ``view`` is a :class:`cosmic_engine.observer.RealityView`. The
+        message body is the dict produced by ``view.to_dict()`` plus
+        the message ``type`` discriminator. Subscribers can pre-filter
+        with :meth:`set_observer_filter`; ``None`` means receive all.
+        """
+        payload_dict = view.to_dict()
+        message = {
+            "type": "reality_view",
+            "observer_id": payload_dict["observer_id"],
+            "scene_state": payload_dict["scene_state"],
+            "representation_type": payload_dict["representation_type"],
+            "metadata": payload_dict["metadata"],
+            "frame": payload_dict["frame"],
+        }
+        self._send_message(message, observer_id=view.observer_id)
+
+    def set_observer_filter(
+        self,
+        conn: socket.socket,
+        observer_id: str | None,
+    ) -> None:
+        """Restrict which reality_view messages this connection receives.
+
+        ``None`` means no filter (receive every observer's view).
+        """
+        with self._lock:
+            self._connection_observer_ids[id(conn)] = observer_id
+
+    def _send_message(
+        self,
+        message: dict,
+        *,
+        observer_id: str | None = None,
+    ) -> None:
         payload = (json.dumps(message) + "\n").encode("utf-8")
         with self._lock:
             dead: list[socket.socket] = []
             for conn in self.connections:
+                # If this is an observer-bound message and the
+                # subscriber has filtered to a different observer, skip.
+                if observer_id is not None:
+                    wanted = self._connection_observer_ids.get(id(conn))
+                    if wanted is not None and wanted != observer_id:
+                        continue
                 try:
                     conn.sendall(payload)
                 except OSError:
                     dead.append(conn)
             for d in dead:
                 self.connections.remove(d)
+                self._connection_observer_ids.pop(id(d), None)
                 try:
                     d.close()
                 except OSError:

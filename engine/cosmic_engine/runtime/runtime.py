@@ -10,6 +10,7 @@ from cosmic_engine.core.registry import UniverseRegistry
 from cosmic_engine.core.time import SimulationClock
 from cosmic_engine.core.universe_object import UniverseObject
 from cosmic_engine.core.vector import Vector3
+from cosmic_engine.observer.observer_manager import ObserverManager
 from cosmic_engine.runtime.config import RuntimeConfig
 from cosmic_engine.runtime.scene_state import SceneState
 from cosmic_engine.streaming.lod import select_lod_objects
@@ -95,6 +96,9 @@ class CosmicRuntime:
         # keep the runtime behaving exactly as before.
         self.scale_manager = None
         self.multiscale_blend_width: float = 0.1
+        # Observer registry (Phase 33). Empty by default — single-observer
+        # callers never need to touch it.
+        self.observer_manager: ObserverManager = ObserverManager()
 
     # --- ingestion --------------------------------------------------------
 
@@ -326,6 +330,179 @@ class CosmicRuntime:
                 return blend_representations(primary, secondary, alpha)
 
         return primary
+
+    # --- multi-observer ---------------------------------------------------
+
+    def render_for_observer(
+        self,
+        observer_id: str,
+        camera,
+    ) -> "RealityView":
+        """Build a :class:`RealityView` for a single observer.
+
+        Steps:
+
+        1. Resolve the observer.
+        2. Select active objects from the observer's position (re-uses
+           streaming + LOD).
+        3. If a :class:`ScaleManager` is attached, pick a multiscale
+           representation; otherwise return the active objects flat.
+        4. Apply this observer's spacetime / AI warp models if set
+           (best-effort; failures fall back to the deterministic path
+           and are reported in the metadata).
+        5. Render a PPM-style frame using the photon path when stars
+           are present; otherwise return ``frame_data=None``.
+        6. Return the assembled :class:`RealityView`.
+        """
+        from cosmic_engine.observer.reality_view import RealityView
+        from cosmic_engine.perception.observer import ObserverState
+        from cosmic_engine.perception.transform import transform_photon_field
+        from cosmic_engine.rendering import (
+            build_star_photon_field,
+            render_photon_field_to_ppm,
+        )
+
+        observer = self.observer_manager.get_observer(observer_id)
+        observer.validate()
+
+        active = self.select_active_objects(observer.position_m)
+
+        if self.scale_manager is not None:
+            rep = self.get_multiscale_scene(observer.position_m)
+            rep_objects = rep.get("objects", []) or []
+            rep_type = rep.get("type", "flat")
+            zone_name = rep.get("zone_name") or rep.get("primary_zone")
+        else:
+            rep_objects = active
+            rep_type = "flat"
+            zone_name = None
+
+        notes: list[str] = []
+        spacetime_label = "none"
+        if observer.spacetime_model is not None:
+            try:
+                _ = observer.spacetime_model.confidence()
+                spacetime_label = type(observer.spacetime_model).__name__
+            except Exception as e:  # pragma: no cover - defensive
+                notes.append(
+                    f"spacetime_model fallback: {type(e).__name__}: {e}"
+                )
+                spacetime_label = "fallback"
+
+        ai_warp_label = "none"
+        if observer.ai_warp_model is not None:
+            try:
+                _ = observer.ai_warp_model.confidence()
+                ai_warp_label = type(observer.ai_warp_model).__name__
+            except Exception as e:  # pragma: no cover - defensive
+                notes.append(
+                    f"ai_warp_model fallback: {type(e).__name__}: {e}"
+                )
+                ai_warp_label = "fallback"
+
+        frame_data = None
+        out_path = observer.config.get("output_ppm_path")
+        try:
+            samples = build_star_photon_field(rep_objects, camera)
+        except Exception as e:  # pragma: no cover - defensive
+            samples = []
+            notes.append(f"photon_field error: {type(e).__name__}: {e}")
+        # Apply this observer's perception (relativistic aberration +
+        # warp_factor + optional AI warp) so identical scene data
+        # produces a different reality per observer.
+        if samples:
+            obs_state = ObserverState(
+                position_m=observer.position_m,
+                velocity_m_s=observer.velocity_m_s,
+                forward=observer.forward,
+                up=observer.up,
+                warp_factor=observer.warp_factor,
+            )
+            try:
+                samples = transform_photon_field(
+                    samples,
+                    obs_state,
+                    ai_model=observer.ai_warp_model,
+                )
+            except Exception as e:  # pragma: no cover - defensive
+                notes.append(f"perception error: {type(e).__name__}: {e}")
+        if samples and out_path:
+            try:
+                render_photon_field_to_ppm(samples, camera, str(out_path))
+                frame_data = self._load_ppm_pixels(out_path)
+            except Exception as e:  # pragma: no cover - defensive
+                notes.append(f"render error: {type(e).__name__}: {e}")
+
+        scene_state = self.build_scene_state()
+        if notes:
+            scene_state.notes = list(scene_state.notes) + notes
+
+        return RealityView(
+            observer_id=observer.id,
+            scene_state=scene_state,
+            representation_type=rep_type,
+            frame_data=frame_data,
+            metadata={
+                "warp_factor": observer.warp_factor,
+                "beta": observer.beta(),
+                "spacetime_model": spacetime_label,
+                "ai_warp_model": ai_warp_label,
+                "object_count": len(rep_objects),
+                "active_count": len(active),
+                "sample_count": len(samples),
+                "zone_name": zone_name,
+                "output_ppm_path": str(out_path) if out_path else None,
+            },
+        )
+
+    def step_all_observers(
+        self,
+        delta_seconds: float,
+    ) -> list["RealityView"]:
+        """Advance the clock once, then render a view per observer.
+
+        Camera is taken from the observer's pose. If a SimpleCamera is
+        attached via ``observer.config['camera']`` it's used as-is;
+        otherwise a default 90° camera is built from the observer's
+        position / forward / up.
+        """
+        from cosmic_engine.rendering import SimpleCamera
+
+        self.step(delta_seconds)
+        views: list["RealityView"] = []
+        for observer in self.observer_manager.list_observers():
+            cam = observer.config.get("camera")
+            if cam is None:
+                cam = SimpleCamera(
+                    position_m=observer.position_m,
+                    forward=observer.forward,
+                    up=observer.up,
+                    fov_degrees=float(observer.config.get("fov_degrees", 90.0)),
+                    image_width=int(observer.config.get("image_width", 256)),
+                    image_height=int(observer.config.get("image_height", 256)),
+                )
+            views.append(self.render_for_observer(observer.id, cam))
+        return views
+
+    @staticmethod
+    def _load_ppm_pixels(path) -> "np.ndarray | None":
+        """Read a PPM file written by :func:`render_photon_field_to_ppm`."""
+        from pathlib import Path as _P
+
+        import numpy as _np
+
+        from PIL import Image as _Image
+
+        p = _P(path)
+        if not p.is_file():
+            return None
+        try:
+            with _Image.open(p) as im:
+                if im.mode != "RGB":
+                    im = im.convert("RGB")
+                return _np.asarray(im, dtype=_np.uint8).copy()
+        except Exception:  # pragma: no cover - defensive
+            return None
 
     # --- streaming bring-up ----------------------------------------------
 

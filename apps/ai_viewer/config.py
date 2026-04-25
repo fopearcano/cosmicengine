@@ -53,6 +53,8 @@ class AIViewerConfig:
     enable_multiscale: bool = False
     multiscale_blend_width: float = 0.1
 
+    observer_id: str | None = None
+
     def validate(self) -> None:
         """Raise :class:`ValueError` if any field is invalid."""
         if not self.server_host:
@@ -126,3 +128,7 @@ class AIViewerConfig:
             raise ValueError("multiscale_blend_width must be non-negative")
         if self.multiscale_blend_width > 1.0:
             raise ValueError("multiscale_blend_width must be <= 1.0")
+        if self.observer_id is not None and not str(self.observer_id):
+            raise ValueError(
+                "observer_id must be None or a non-empty string"
+            )

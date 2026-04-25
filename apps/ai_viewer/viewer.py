@@ -155,9 +155,34 @@ class AIViewer:
         if kind == "scene_state":
             self.last_scene_state = message.get("data")
             self.scene_states_received += 1
+        elif kind == "reality_view":
+            self._handle_reality_view(message)
         elif kind == "frame":
             self._handle_frame(message)
         return message
+
+    def _handle_reality_view(self, message: dict) -> None:
+        """Optionally filter by ``config.observer_id`` and print a 1-line note."""
+        observer_id = message.get("observer_id")
+        if (
+            self.config.observer_id is not None
+            and observer_id != self.config.observer_id
+        ):
+            return
+        scene_state = message.get("scene_state")
+        if scene_state:
+            self.last_scene_state = scene_state
+            self.scene_states_received += 1
+        meta = message.get("metadata", {}) or {}
+        print(
+            f"observer={observer_id} "
+            f"warp_factor={meta.get('warp_factor')} "
+            f"spacetime={meta.get('spacetime_model')} "
+            f"rep={message.get('representation_type')}"
+        )
+        frame_payload = message.get("frame")
+        if isinstance(frame_payload, dict) and frame_payload.get("data"):
+            self._handle_frame({"type": "frame", "data": frame_payload["data"]})
 
     def run_loop(self, max_frames: int | None = None) -> int:
         """Connect, drain ``max_frames`` messages, disconnect.

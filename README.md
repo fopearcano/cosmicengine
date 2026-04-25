@@ -911,3 +911,73 @@ CosmicEngine is a data-driven, physics-grounded, AI-assisted cosmic perception e
   density_field). With the bundled dataset the demo crosses **3
   zone transitions** and writes 5 frames to
   `outputs/viewer/output_multiscale_*.ppm`.
+
+## Phase 33: Observer-dependent reality
+
+- New package `cosmic_engine.observer` introduces a multi-observer
+  reality model: many observers can share the same universe state
+  but each one perceives it differently through their own pose,
+  velocity, perception knobs, and (optionally) different spacetime
+  / AI warp models.
+  - `Observer(id, position_m, velocity_m_s, forward, up,
+    warp_factor=1.0, spacetime_model=None, ai_warp_model=None,
+    config={})` is a dataclass with `beta()` and `validate()`
+    (rejects empty id, warp_factor < 1.0, beta >= 1.0, zero
+    forward / up).
+  - `RealityView(observer_id, scene_state, representation_type,
+    frame_data=None, metadata={})` packages everything one
+    observer perceives, with `to_dict()` / `summary()` helpers.
+  - `ObserverManager` is an O(1) dict-backed registry with
+    `add_observer / remove_observer / get_observer /
+    list_observers` (sorted by id for determinism).
+- `CosmicRuntime` gained an `observer_manager` field (empty by
+  default — single-observer pipelines are unaffected) plus two
+  methods:
+  - `render_for_observer(observer_id, camera) -> RealityView`:
+    selects active objects from the observer's position (re-uses
+    streaming + LOD + multiscale), applies the observer's
+    perception transform (relativistic aberration + beaming +
+    `warp_factor`, optionally swapped for an `AIWarpModel`),
+    runs the photon-field renderer, and packages the resulting
+    pixels + metadata. Spacetime / AI model failures fall back
+    cleanly and are recorded in `RealityView.metadata`.
+  - `step_all_observers(delta_seconds) -> list[RealityView]`:
+    advances the clock once and renders one view per registered
+    observer (camera taken from `observer.config['camera']` when
+    set, else built from the observer's pose).
+- `RuntimeServer` gained an observer-aware tick: when the runtime
+  has any registered observers, each tick calls
+  `step_all_observers` and broadcasts one
+  `{"type": "reality_view", "observer_id": ..., "scene_state":
+  ..., "representation_type": ..., "metadata": ..., "frame": ...}`
+  per observer. Subscribers can call `set_observer_filter(conn,
+  observer_id)` to receive only one observer's stream;
+  unfiltered connections receive all of them. With zero
+  observers the server falls back to the original single
+  `scene_state` broadcast.
+- `AIViewer` learned to consume `reality_view` messages: a new
+  `AIViewerConfig.observer_id: str | None` field selects which
+  observer the viewer follows (`None` = follow all). Each
+  message prints a one-line `observer=... warp_factor=...
+  spacetime=... rep=...` note.
+- Demo at `examples/multi_observer_demo.py` creates 3 observers
+  on the bundled Gaia + SDSS + DESI + JPL data:
+  1. **baseline** — stationary, `warp_factor=1.0`, no models.
+  2. **relativistic** — `beta=0.6`, no models (pure aberration
+     + beaming).
+  3. **neural** — `beta=0.1`, `warp_factor=8.0`, attached
+     `SpacetimeFieldModel` (mock).
+  Renders 2 frames per observer (6 PPMs total). Reports the
+  mean absolute pixel delta of each observer's frame vs the
+  baseline; with the bundled dataset both relativistic and
+  neural show ~`0.08` mean delta — same data, different
+  perceived realities — at ~`280 ms` for `3 observers ×
+  2 frames`.
+- 25 new tests in `tests/test_observer_system.py` cover Observer
+  validation, ObserverManager add/remove/get/list/duplicate
+  rejection, RealityView dict + summary, runtime integration
+  (render returns RealityView, unknown observer raises,
+  step_all_observers returns one per observer, two observers
+  render to distinct files, broken spacetime model falls back,
+  multiscale produces non-flat representations), and
+  AIViewerConfig observer_id default + validation.
