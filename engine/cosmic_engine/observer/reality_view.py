@@ -20,6 +20,10 @@ class RealityView:
     pixel buffer (or ``None`` if rendering was skipped), and an open
     metadata dict for anything else (warp factor, model labels, blend
     info, etc.).
+
+    Phase 34 added explicit ``proper_time_tau`` / ``coordinate_time_t``
+    fields and a ``visible_event_count`` so the per-observer subjective
+    timeline is first-class on the wire.
     """
 
     observer_id: str
@@ -27,6 +31,9 @@ class RealityView:
     representation_type: str
     frame_data: np.ndarray | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
+    proper_time_tau: float = 0.0
+    coordinate_time_t: float = 0.0
+    visible_event_count: int = 0
 
     def to_dict(self) -> dict[str, Any]:
         """Return a JSON-friendly dict (frame data is reported by shape)."""
@@ -43,6 +50,9 @@ class RealityView:
             "representation_type": self.representation_type,
             "frame": frame_info,
             "metadata": dict(self.metadata),
+            "proper_time_tau": float(self.proper_time_tau),
+            "coordinate_time_t": float(self.coordinate_time_t),
+            "visible_event_count": int(self.visible_event_count),
         }
 
     def summary(self) -> str:
@@ -54,5 +64,7 @@ class RealityView:
         warp_str = f"warp={warp}" if warp is not None else "warp=?"
         return (
             f"observer={self.observer_id} rep={self.representation_type} "
-            f"objects={n_obj} {warp_str} spacetime={model}"
+            f"objects={n_obj} {warp_str} spacetime={model} "
+            f"τ={self.proper_time_tau:.3f} t={self.coordinate_time_t:.3f} "
+            f"events={self.visible_event_count}"
         )

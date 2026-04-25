@@ -13,6 +13,7 @@ from cosmic_engine.core.vector import Vector3
 from cosmic_engine.observer.observer_manager import ObserverManager
 from cosmic_engine.runtime.config import RuntimeConfig
 from cosmic_engine.runtime.scene_state import SceneState
+from cosmic_engine.time.event_store import EventStore
 from cosmic_engine.streaming.lod import select_lod_objects
 from cosmic_engine.streaming.spatial_index import SpatialIndex
 from cosmic_engine.streaming.tile_store import (
@@ -99,6 +100,11 @@ class CosmicRuntime:
         # Observer registry (Phase 33). Empty by default — single-observer
         # callers never need to touch it.
         self.observer_manager: ObserverManager = ObserverManager()
+        # Event log + global coordinate time (Phase 34). The event store
+        # is shared truth; each observer filters it through its own past
+        # light cone in get_visible_events().
+        self.event_store: EventStore = EventStore()
+        self.coordinate_time_t: float = 0.0
 
     # --- ingestion --------------------------------------------------------
 
@@ -437,6 +443,8 @@ class CosmicRuntime:
         if notes:
             scene_state.notes = list(scene_state.notes) + notes
 
+        visible_events = self.get_visible_events(observer)
+
         return RealityView(
             observer_id=observer.id,
             scene_state=scene_state,
@@ -452,7 +460,11 @@ class CosmicRuntime:
                 "sample_count": len(samples),
                 "zone_name": zone_name,
                 "output_ppm_path": str(out_path) if out_path else None,
+                "visible_event_ids": [e.id for e in visible_events],
             },
+            proper_time_tau=float(observer.proper_time_tau),
+            coordinate_time_t=float(observer.coordinate_time_t),
+            visible_event_count=len(visible_events),
         )
 
     def step_all_observers(
@@ -544,8 +556,17 @@ class CosmicRuntime:
     # --- stepping ---------------------------------------------------------
 
     def step(self, delta_seconds: float) -> SceneState:
-        """Advance the clock and (if configured) one physics step."""
+        """Advance the clock and (if configured) one physics step.
+
+        Also advances ``self.coordinate_time_t`` and every registered
+        observer's ``proper_time_tau`` / ``coordinate_time_t`` (using
+        the local gravitational potential from any massive registry
+        objects when available).
+        """
+        if delta_seconds < 0.0:
+            raise ValueError("delta_seconds must be non-negative")
         self.clock.tick(delta_seconds)
+        self.coordinate_time_t += float(delta_seconds)
         notes: list[str] = [
             f"clock advanced by {delta_seconds} s",
         ]
@@ -555,10 +576,79 @@ class CosmicRuntime:
         else:
             notes.append("physics: disabled")
 
+        # Phase 34: advance each observer's proper time. We re-use the
+        # registry's massive bodies as the gravitational sources for the
+        # weak-field correction, capping at the most-massive 16 to keep
+        # the per-observer cost bounded for large registries.
+        if len(self.observer_manager) > 0:
+            masses = self._collect_massive_for_potential(limit=16)
+            for observer in self.observer_manager.list_observers():
+                try:
+                    observer.advance_time(
+                        delta_seconds,
+                        masses_for_potential=masses if masses else None,
+                    )
+                except Exception as e:  # pragma: no cover - defensive
+                    notes.append(
+                        f"observer {observer.id} advance_time failed: "
+                        f"{type(e).__name__}: {e}"
+                    )
+
         state = self.build_scene_state()
         state.notes = notes
         self.last_scene_state = state
         return state
+
+    def _collect_massive_for_potential(
+        self,
+        limit: int = 16,
+    ) -> list[tuple]:
+        """Return up to ``limit`` ``(position_xyz, mass_kg)`` pairs.
+
+        Picks the heaviest objects so the dominant potential is
+        captured; the long tail is dropped to keep per-observer
+        gravitational-potential evaluation O(1) per step.
+        """
+        import numpy as _np
+
+        massive = [
+            o for o in self.registry.list_objects()
+            if o.mass_kg is not None and o.mass_kg > 0.0
+        ]
+        if not massive:
+            return []
+        massive.sort(key=lambda o: float(o.mass_kg), reverse=True)
+        out: list[tuple] = []
+        for obj in massive[:limit]:
+            out.append((
+                _np.array(
+                    [obj.position_m.x, obj.position_m.y, obj.position_m.z],
+                    dtype=_np.float64,
+                ),
+                float(obj.mass_kg),
+            ))
+        return out
+
+    def get_visible_events(self, observer) -> list:
+        """Return the events in ``observer``'s past light cone.
+
+        Filters :attr:`event_store` against
+        :func:`cosmic_engine.time.is_event_visible` using the
+        observer's current position and ``coordinate_time_t``.
+        """
+        import numpy as _np
+
+        from cosmic_engine.time.causality import is_event_visible
+
+        position = _np.array(
+            [observer.position_m.x, observer.position_m.y, observer.position_m.z],
+            dtype=_np.float64,
+        )
+        return [
+            e
+            for e in self.event_store.list_events()
+            if is_event_visible(e, position, observer.coordinate_time_t)
+        ]
 
     def _run_physics_step(self, delta_seconds: float) -> list[str]:
         """Run one physics step on all massive registry objects."""

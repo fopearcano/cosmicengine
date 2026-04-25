@@ -185,6 +185,9 @@ class RuntimeServer:
             "representation_type": payload_dict["representation_type"],
             "metadata": payload_dict["metadata"],
             "frame": payload_dict["frame"],
+            "proper_time_tau": payload_dict["proper_time_tau"],
+            "coordinate_time_t": payload_dict["coordinate_time_t"],
+            "visible_event_count": payload_dict["visible_event_count"],
         }
         self._send_message(message, observer_id=view.observer_id)
 

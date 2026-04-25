@@ -174,11 +174,17 @@ class AIViewer:
             self.last_scene_state = scene_state
             self.scene_states_received += 1
         meta = message.get("metadata", {}) or {}
+        tau = message.get("proper_time_tau")
+        coord_t = message.get("coordinate_time_t")
+        n_events = message.get("visible_event_count", 0)
+        tau_str = f"{tau:.3f}" if isinstance(tau, (int, float)) else "?"
+        t_str = f"{coord_t:.3f}" if isinstance(coord_t, (int, float)) else "?"
         print(
             f"observer={observer_id} "
             f"warp_factor={meta.get('warp_factor')} "
             f"spacetime={meta.get('spacetime_model')} "
-            f"rep={message.get('representation_type')}"
+            f"rep={message.get('representation_type')} "
+            f"tau={tau_str} t={t_str} events={n_events}"
         )
         frame_payload = message.get("frame")
         if isinstance(frame_payload, dict) and frame_payload.get("data"):

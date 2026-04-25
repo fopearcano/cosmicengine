@@ -981,3 +981,75 @@ CosmicEngine is a data-driven, physics-grounded, AI-assisted cosmic perception e
   render to distinct files, broken spacetime model falls back,
   multiscale produces non-flat representations), and
   AIViewerConfig observer_id default + validation.
+
+## Phase 34: Subjective time and causality
+
+- New package `cosmic_engine.time` introduces per-observer proper
+  time, an event log, and a light-cone-based visibility filter so
+  every observer perceives a causally consistent slice of the
+  universe.
+  - `gamma_from_beta(beta)` — Lorentz factor with a hard clamp at
+    β < 1 (handles negative β symmetrically; near-1 inputs produce
+    a large but finite γ instead of an inf).
+  - `advance_proper_time(tau, delta_t, beta, gravitational_potential=None)`
+    advances proper time using `dτ = dt / γ`, optionally
+    multiplied by the weak-field factor `(1 + Φ/c²)`. The factor
+    is floored at `1.0e-3` so absurd inputs can't drive `dτ`
+    negative.
+  - `gravitational_potential_weak(position, [(mass_pos, mass_kg), …])`
+    returns `Φ ≈ -Σ G·M / r`, with `r` clamped at 1 m so a
+    coincident mass doesn't yield `-inf`.
+  - `Event(id, position_m, time_t, payload, source)` — pointlike
+    event record. `position_m` is canonicalized to a `(3,)`
+    numpy float64 array on construction.
+  - `EventStore` — list-backed registry with
+    `add_event / list_events / query_time_window`.
+  - `is_event_visible(event, observer_position, observer_time_t)`
+    enforces the past-light-cone condition
+    `c·(t_obs − t_event) ≥ |x_obs − x_event|` (and rejects future
+    events). 1 ns slack on the cone absorbs floating-point drift.
+  - `compute_retarded_time(observer_position, observer_time_t, source_position)`
+    returns `t_emit ≈ t_obs − distance / c` (static-source
+    approximation; no iteration on a moving emitter).
+- `Observer` gained `proper_time_tau` and `coordinate_time_t`
+  fields plus `advance_time(delta_t, masses_for_potential=None)`
+  that steps both clocks (SR + optional weak-field GR).
+- `CosmicRuntime` gained an `event_store` and a
+  `coordinate_time_t`. `runtime.step(delta_t)` now also advances
+  `coordinate_time_t` and every registered observer's clocks,
+  using up to the 16 most-massive registry objects as
+  gravitational sources for the weak-field correction.
+  `get_visible_events(observer)` filters the event store
+  through the observer's past light cone.
+- `RealityView` gained `proper_time_tau`, `coordinate_time_t`,
+  and `visible_event_count` (top-level fields, not just
+  metadata). `to_dict()` and `summary()` surface them.
+- `RuntimeServer.broadcast_observer_view` extends the wire
+  protocol with `proper_time_tau`, `coordinate_time_t`, and
+  `visible_event_count` so subscribers can render an observer's
+  subjective timeline directly.
+- `AIViewer` displays the new fields in its per-message print
+  (`tau=… t=… events=…`).
+- Demo at `examples/causality_demo.py` creates 3 observers
+  (`near` 1 ls from origin, `far` 10 ls from origin, `moving` at
+  1 ls but with β = 0.8) and 3 events (origin flash at t=0,
+  far-side flash at t=0, future flash at t=6 s). Stepping 6× at
+  Δt = 2 s shows:
+  - light-cone gating: `near`/`moving` see `origin_flash`
+    immediately (1 ls away, t > 1 s), but `far` only sees it
+    after t ≥ 10 s; `far` sees `far_flash` instantly because
+    they're collocated; `future_flash` (emitted at t=6 from the
+    origin) becomes visible to `near`/`moving` at t ≥ 7 s and
+    is still invisible to `far` at t = 12 s.
+  - subjective time: at t = 12 s, `near` and `far` have τ = 12 s
+    (no motion, weak GR), but `moving` has τ = 7.2 s
+    (γ = 1.667, Δ = 4.8 s of dilation).
+- 34 new tests in `tests/test_causality.py` cover gamma /
+  proper-time math, the gravitational-potential clamp, Event /
+  EventStore behavior, light-cone visibility (including future
+  events and on-cone slack), retarded-time monotonicity,
+  Observer.advance_time at rest / in motion / in a well, and
+  runtime integration (event store presence, step advances
+  global + per-observer time, get_visible_events filters
+  correctly, render_for_observer attaches τ / t /
+  visible_event_count).
