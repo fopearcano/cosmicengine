@@ -16,6 +16,10 @@ class AIViewerConfig:
     enable_ai_postprocess: bool = False
     output_directory: str = "outputs/viewer"
 
+    enable_window: bool = True
+    enable_postprocess: bool = True
+    max_fps: float = 30.0
+
     def validate(self) -> None:
         """Raise :class:`ValueError` if any field is invalid."""
         if not self.server_host:
@@ -28,3 +32,5 @@ class AIViewerConfig:
             raise ValueError("width and height must be positive")
         if not self.output_directory:
             raise ValueError("output_directory must be a non-empty string")
+        if self.max_fps <= 0.0:
+            raise ValueError("max_fps must be positive")

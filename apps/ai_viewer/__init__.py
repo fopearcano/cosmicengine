@@ -9,11 +9,25 @@ replaced later by a Vulkan / WebGPU / neural renderer.
 from ai_viewer.client import RuntimeClient
 from ai_viewer.config import AIViewerConfig
 from ai_viewer.frame_buffer import FrameBuffer
+from ai_viewer.postprocess import (
+    BrightnessProcessor,
+    ColorShiftProcessor,
+    CompositeProcessor,
+    ContrastBoostProcessor,
+    FramePostProcessor,
+)
 from ai_viewer.viewer import AIViewer
+from ai_viewer.window import ViewerWindow
 
 __all__ = [
     "AIViewer",
     "AIViewerConfig",
+    "BrightnessProcessor",
+    "ColorShiftProcessor",
+    "CompositeProcessor",
+    "ContrastBoostProcessor",
     "FrameBuffer",
+    "FramePostProcessor",
     "RuntimeClient",
+    "ViewerWindow",
 ]

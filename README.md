@@ -364,3 +364,35 @@ CosmicEngine is a data-driven, physics-grounded, AI-assisted cosmic perception e
   the same process, drains a few `SceneState` messages, broadcasts
   one PPM frame via `broadcast_frame`, saves it locally, and prints
   the ASCII preview.
+
+## Phase 19: AI Viewer real-time display
+
+- `apps/ai_viewer/window.py` adds a tkinter-based `ViewerWindow`
+  (no extra dependency beyond Pillow, which we now ship). The window
+  loads each frame as a `PhotoImage` and pumps events via
+  `update_idletasks` / `update`; on a headless host it flips
+  `available = False` and every later `show_frame` / `update` is a
+  no-op so demos still run.
+- `apps/ai_viewer/postprocess.py` adds a modular postprocessing
+  pipeline: `FramePostProcessor` base (pass-through), plus
+  `ContrastBoostProcessor`, `BrightnessProcessor`,
+  `ColorShiftProcessor` (per-channel additive shift via a clamped
+  256-entry LUT), and `CompositeProcessor` that chains a list of
+  processors in order. Pure Pillow / `ImageEnhance`; no neural
+  networks here yet.
+- `AIViewer` is upgraded to: take a `ViewerWindow` and a
+  `FramePostProcessor`; convert PPM bytes → `PIL.Image` (with
+  fallback to the in-house parser); apply postprocess; save and
+  display; track recent frame timestamps and report FPS every
+  five frames; throttle to `config.max_fps`.
+- `AIViewerConfig` adds `enable_window: bool = True`,
+  `enable_postprocess: bool = True`, `max_fps: float = 30.0`
+  (validated > 0).
+- New dependency: `pillow>=10`. Still no OpenCV, no GPU, no
+  threading complexity in the core loop.
+- Demo at `examples/ai_viewer_window_demo.py` spins up a
+  `RuntimeServer`, runs a background thread that broadcasts a fresh
+  PPM each 100 ms, displays the live frames in a tkinter window,
+  applies a `Contrast → Brightness → ColorShift` chain, and prints
+  FPS every five frames. Falls back to ASCII preview on headless
+  hosts.

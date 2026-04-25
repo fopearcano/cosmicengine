@@ -2,34 +2,54 @@
 
 from __future__ import annotations
 
+import base64
 import json
 import time
+from collections import deque
+from io import BytesIO
 from pathlib import Path
 
 import numpy as np
+from PIL import Image
 
 from ai_viewer.client import RuntimeClient
 from ai_viewer.config import AIViewerConfig
 from ai_viewer.frame_buffer import FrameBuffer
+from ai_viewer.postprocess import FramePostProcessor
+from ai_viewer.window import ViewerWindow
 
 
 class AIViewer:
-    """Receive runtime messages, save frames, render SceneState text.
+    """Receive runtime messages, postprocess frames, display + save them.
 
-    The "AI" postprocess is currently a deterministic gamma adjustment;
-    a real neural step will swap in here without changing the public
-    API.
+    Phase 19: an optional :class:`ViewerWindow` displays each frame
+    in real time and an optional :class:`FramePostProcessor` runs
+    contrast / brightness / color shifts on the way past. ``run_once``
+    processes one message; ``run_loop`` drains a bounded number of
+    messages and respects ``config.max_fps`` by sleeping between
+    frame renders.
     """
 
-    def __init__(self, config: AIViewerConfig, client: RuntimeClient) -> None:
+    def __init__(
+        self,
+        config: AIViewerConfig,
+        client: RuntimeClient,
+        window: ViewerWindow | None = None,
+        postprocessor: FramePostProcessor | None = None,
+    ) -> None:
         config.validate()
         self.config = config
         self.client = client
+        self.window = window
+        self.postprocessor = postprocessor
         self.frame_buffer = FrameBuffer()
         self.last_scene_state: dict | None = None
         self.last_frame_path: str | None = None
         self.frames_received: int = 0
         self.scene_states_received: int = 0
+        self._frame_times: deque[float] = deque(maxlen=30)
+        self._min_frame_interval: float = 1.0 / max(config.max_fps, 1.0e-6)
+        self._last_render_time: float = 0.0
 
     # --- scene-state rendering -------------------------------------------
 
@@ -51,13 +71,14 @@ class AIViewer:
             lines.append(f"notes          : {notes}")
         return "\n".join(lines)
 
-    # --- AI postprocess (placeholder) -------------------------------------
+    # --- AI postprocess (legacy gamma curve) ------------------------------
 
     def optional_ai_postprocess(self, frame_buffer: FrameBuffer) -> FrameBuffer:
         """Deterministic gamma 0.8 + clamp; placeholder for a real neural step.
 
-        Preserves dimensions; idempotent on shape; always writes to a new
-        :class:`FrameBuffer`.
+        Preserves dimensions; always writes to a new :class:`FrameBuffer`.
+        Kept around for backwards-compat with ``config.enable_ai_postprocess``;
+        Phase 19 prefers the modular :class:`FramePostProcessor` chain.
         """
         if frame_buffer.width <= 0 or frame_buffer.height <= 0:
             return frame_buffer
@@ -79,20 +100,7 @@ class AIViewer:
             self.last_scene_state = message.get("data")
             self.scene_states_received += 1
         elif kind == "frame":
-            data = message.get("data", "")
-            if data:
-                import base64
-
-                try:
-                    self.frame_buffer.load_ppm_bytes(base64.b64decode(data))
-                except Exception:
-                    return message
-                if self.config.enable_ai_postprocess:
-                    self.frame_buffer = self.optional_ai_postprocess(
-                        self.frame_buffer
-                    )
-                self._save_frame()
-                self.frames_received += 1
+            self._handle_frame(message)
         return message
 
     def run_loop(self, max_frames: int | None = None) -> int:
@@ -112,11 +120,94 @@ class AIViewer:
             self.client.disconnect()
         return processed
 
-    # --- helpers ----------------------------------------------------------
+    def fps(self) -> float:
+        """Approximate frames-per-second over the recent window."""
+        if len(self._frame_times) < 2:
+            return 0.0
+        span = self._frame_times[-1] - self._frame_times[0]
+        if span <= 0.0:
+            return 0.0
+        return (len(self._frame_times) - 1) / span
 
-    def _save_frame(self) -> None:
+    # --- frame pipeline ---------------------------------------------------
+
+    def _handle_frame(self, message: dict) -> None:
+        encoded = message.get("data", "")
+        if not encoded:
+            return
+        try:
+            ppm_bytes = base64.b64decode(encoded)
+        except Exception:
+            return
+
+        image = self._load_image(ppm_bytes)
+        if image is None:
+            return
+
+        # Mirror to FrameBuffer so ASCII previews / legacy paths still work.
+        self._sync_frame_buffer(image)
+
+        if self.config.enable_postprocess and self.postprocessor is not None:
+            try:
+                image = self.postprocessor.process(image)
+            except Exception:
+                pass
+        elif self.config.enable_ai_postprocess:
+            self.frame_buffer = self.optional_ai_postprocess(self.frame_buffer)
+            image = Image.fromarray(self.frame_buffer.pixels, mode="RGB")
+
+        self._save_image(image)
+        self._display(image)
+
+        now = time.perf_counter()
+        self._frame_times.append(now)
+        self.frames_received += 1
+        # FPS print every 5 frames as required by Phase 19.
+        if self.frames_received % 5 == 0:
+            print(f"FPS: {self.fps():.1f}")
+
+        elapsed_since_last = now - self._last_render_time
+        if elapsed_since_last < self._min_frame_interval:
+            time.sleep(self._min_frame_interval - elapsed_since_last)
+        self._last_render_time = time.perf_counter()
+
+    def _load_image(self, ppm_bytes: bytes) -> Image.Image | None:
+        try:
+            image = Image.open(BytesIO(ppm_bytes))
+            image.load()
+            if image.mode != "RGB":
+                image = image.convert("RGB")
+            return image
+        except Exception:
+            try:
+                self.frame_buffer.load_ppm_bytes(ppm_bytes)
+            except Exception:
+                return None
+            return Image.fromarray(self.frame_buffer.pixels, mode="RGB")
+
+    def _sync_frame_buffer(self, image: Image.Image) -> None:
+        rgb = image if image.mode == "RGB" else image.convert("RGB")
+        self.frame_buffer = FrameBuffer(rgb.width, rgb.height)
+        self.frame_buffer.pixels = np.asarray(rgb, dtype=np.uint8)
+
+    def _save_image(self, image: Image.Image) -> None:
         out_dir = Path(self.config.output_directory)
         out_dir.mkdir(parents=True, exist_ok=True)
         path = out_dir / f"frame_{int(time.time() * 1_000)}.ppm"
-        self.frame_buffer.save_ppm(str(path))
+        try:
+            image.save(path, format="PPM")
+        except Exception:
+            rgb = image if image.mode == "RGB" else image.convert("RGB")
+            buf = FrameBuffer(rgb.width, rgb.height)
+            buf.pixels = np.asarray(rgb, dtype=np.uint8)
+            buf.save_ppm(str(path))
         self.last_frame_path = str(path)
+
+    def _display(self, image: Image.Image) -> None:
+        if not self.config.enable_window or self.window is None:
+            return
+        try:
+            self.window.show_frame(image)
+            self.window.update()
+        except Exception:
+            pass
