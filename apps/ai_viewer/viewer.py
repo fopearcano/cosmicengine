@@ -46,7 +46,18 @@ class AIViewer:
         self.client = client
         self.window = window
         if postprocessor is None:
-            postprocessor = build_postprocessor_from_config(config)
+            if config.use_photon_warp:
+                # Photon-space warping happens at the source; the viewer
+                # should not double-process the resulting image.
+                if not config.photon_warp_model_path:
+                    print(
+                        "AIViewer warning: use_photon_warp=True but no "
+                        "photon_warp_model_path provided; image postprocess "
+                        "still bypassed (deterministic perception assumed)"
+                    )
+                postprocessor = FramePostProcessor()
+            else:
+                postprocessor = build_postprocessor_from_config(config)
         self.postprocessor: FramePostProcessor = postprocessor
         self.frame_buffer = FrameBuffer()
         self.last_scene_state: dict | None = None

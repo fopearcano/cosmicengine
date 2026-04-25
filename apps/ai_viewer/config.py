@@ -25,6 +25,9 @@ class AIViewerConfig:
     neural_input_height: int | None = None
     neural_normalize: bool = True
 
+    use_photon_warp: bool = False
+    photon_warp_model_path: str | None = None
+
     def validate(self) -> None:
         """Raise :class:`ValueError` if any field is invalid."""
         if not self.server_host:

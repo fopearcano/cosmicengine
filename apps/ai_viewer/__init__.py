@@ -10,6 +10,7 @@ from ai_viewer.client import RuntimeClient
 from ai_viewer.config import AIViewerConfig
 from ai_viewer.frame_buffer import FrameBuffer
 from ai_viewer.neural_postprocess import ONNXFrameProcessor
+from ai_viewer.neural_warp_viewer import NeuralWarpViewer
 from ai_viewer.postprocess import (
     BrightnessProcessor,
     ColorShiftProcessor,
@@ -31,6 +32,7 @@ __all__ = [
     "ContrastBoostProcessor",
     "FrameBuffer",
     "FramePostProcessor",
+    "NeuralWarpViewer",
     "ONNXFrameProcessor",
     "RuntimeClient",
     "SafeProcessor",

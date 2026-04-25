@@ -430,3 +430,42 @@ CosmicEngine is a data-driven, physics-grounded, AI-assisted cosmic perception e
 - Demo at `examples/ai_viewer_neural_demo.py` runs deterministic by
   default (`--model` omitted) or neural with `--model` and optional
   `--neural-input-width/height`.
+
+## Phase 21: Neural photon warp
+
+- AI now operates **before** rendering, in photon space, not just on
+  the final image. `cosmic_engine.ai.ONNXPhotonWarpModel` implements
+  the existing `AIWarpModel` interface but with a documented
+  9-float input and 7-float output schema:
+  `[dir.x, dir.y, dir.z, brightness, color_r, color_g, color_b,
+  observer_beta, warp_factor] → [new_dir.x, new_dir.y, new_dir.z,
+  new_brightness, new_color_r, new_color_g, new_color_b]`.
+- Each `predict_*` call runs one ONNX inference, normalizes the
+  direction, clamps brightness to non-negative, and clamps colors to
+  `[0, 255]`. Missing files, invalid models, and inference exceptions
+  silently fall back to the deterministic `apply_*_warp` helpers and
+  record `last_error`. `confidence()` returns `0.85` when the session
+  is healthy and `0.3` after any failure.
+- A bundled mock model (`data/photon_warp_model.onnx`, 448 bytes,
+  9→7 linear MatMul + Add) lets the demo and tests exercise the
+  inference path without a real trained model. Rebuild with
+  `python scripts/build_photon_warp_model.py`.
+- `apps/ai_viewer/neural_warp_viewer.NeuralWarpViewer` drives a frame
+  end-to-end on the local side: select active objects, build the
+  star photon field + galaxy field batch, run
+  `transform_photon_field(..., ai_model=warp_model)`, then render
+  to PPM. Prints warp mode, confidence, photon count, and frame
+  time per call. `run_loop(max_frames, output_pattern)` is the
+  batch driver.
+- `AIViewerConfig.use_photon_warp: bool = False` and
+  `photon_warp_model_path: str | None = None`. When
+  `use_photon_warp=True`, `AIViewer` skips the image postprocess
+  pipeline (the warp happens at the source) and emits a one-line
+  warning if no model path is provided.
+- No PyTorch, no GPU, no batching yet (per-sample inference). The
+  deterministic perception transform remains the default; the
+  scalar / vectorized / Barnes-Hut / runtime / runtime-server paths
+  are all untouched.
+- Demo at `examples/neural_photon_warp_demo.py` renders three
+  PPMs into `outputs/viewer/`: deterministic, neural (warp_factor=2),
+  and neural-extreme (warp_factor=50).
