@@ -23,10 +23,14 @@ from ai_viewer.neural_field.gpu import (
 )
 from ai_viewer.neural_field.gr import (
     BlackHole,
+    GeodesicRayMarcher,
     apply_black_hole_to_points,
     apply_lensing,
     apply_lensing_to_points,
     compute_deflection_angle,
+    integrate_geodesic_step,
+    schwarzschild_acceleration,
+    trace_points_through_geodesic,
 )
 from ai_viewer.neural_field.splat_renderer import GaussianSplatRenderer
 
@@ -38,12 +42,16 @@ __all__ = [
     "GaussianPoint",
     "GaussianSplatPipeline",
     "GaussianSplatRenderer",
+    "GeodesicRayMarcher",
     "apply_black_hole_to_points",
     "apply_lensing",
     "apply_lensing_to_points",
     "build_gaussian_field_from_density",
     "build_gaussian_field_from_galaxy_batch",
     "compute_deflection_angle",
+    "integrate_geodesic_step",
+    "schwarzschild_acceleration",
+    "trace_points_through_geodesic",
     "warp_gaussian_field",
     "warp_gaussian_point",
 ]

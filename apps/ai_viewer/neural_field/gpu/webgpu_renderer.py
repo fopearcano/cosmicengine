@@ -27,7 +27,10 @@ from cosmic_engine.rendering.simple_camera import SimpleCamera
 
 _SHADER_PATH = Path(__file__).parent / "shaders" / "splat.wgsl"
 _GR_SHADER_PATH = Path(__file__).parent / "shaders" / "gr_splat.wgsl"
-# Enough room for the GR shader's 7 vec4 uniform block, padded to 256.
+_GEODESIC_SHADER_PATH = (
+    Path(__file__).parent / "shaders" / "geodesic_splat.wgsl"
+)
+# Enough room for the GR / geodesic shaders' 7 vec4 uniform block, padded to 256.
 _UNIFORM_SIZE_BYTES: int = 256
 
 
@@ -51,26 +54,46 @@ class WebGPUSplatRenderer:
         self._readback_buffer = None
         self._shader_module = None
         self._pipeline_initialized = False
-        # GR state (Phase 28)
+        # GR state (Phase 28 / Phase 29)
         self._black_hole = None
         self._enable_lensing: bool = False
+        self._gr_mode: str = "none"
+        self._geodesic_steps: int = 8
+        self._geodesic_step_size: float = 1.0e9
         self._use_gr_shader: bool = False
 
     def enable_gr_effects(
         self,
         black_hole=None,
         enable_lensing: bool = True,
+        gr_mode: str = "lensing",
+        geodesic_steps: int = 8,
+        geodesic_step_size: float = 1.0e9,
     ) -> None:
-        """Wire a black hole + lensing toggle into the render pass.
+        """Wire a black hole + GR mode into the render pass.
 
-        Pass ``black_hole=None`` and ``enable_lensing=False`` to revert
-        to the plain Phase 27 splat shader. Reconfiguring requires
-        re-initializing the pipeline, so the flag is captured before
-        the next ``render`` call.
+        ``gr_mode``: ``"none"`` reverts to the plain Phase 27 splat
+        shader; ``"lensing"`` uses the Phase 28 single-deflection
+        shader; ``"geodesic"`` uses the Phase 29 ray-marched shader
+        with ``geodesic_steps`` substeps of ``geodesic_step_size`` m.
+        ``enable_lensing`` is kept for backwards compatibility — when
+        ``gr_mode == "lensing"`` it controls whether lensing is on.
         """
+        if gr_mode not in ("none", "lensing", "geodesic"):
+            raise ValueError(
+                f"gr_mode must be 'none', 'lensing', or 'geodesic'; "
+                f"got {gr_mode!r}"
+            )
+        if geodesic_steps <= 0:
+            raise ValueError("geodesic_steps must be positive")
+        if geodesic_step_size <= 0.0:
+            raise ValueError("geodesic_step_size must be positive")
         self._black_hole = black_hole
-        self._enable_lensing = bool(enable_lensing)
-        self._use_gr_shader = (
+        self._enable_lensing = bool(enable_lensing) and gr_mode == "lensing"
+        self._gr_mode = gr_mode
+        self._geodesic_steps = int(geodesic_steps)
+        self._geodesic_step_size = float(geodesic_step_size)
+        self._use_gr_shader = gr_mode != "none" and (
             black_hole is not None or self._enable_lensing
         )
         # Force pipeline recreation so the right shader is selected.
@@ -88,7 +111,12 @@ class WebGPUSplatRenderer:
         import wgpu
 
         wgpu_dev = self.device.device
-        shader_path = _GR_SHADER_PATH if self._use_gr_shader else _SHADER_PATH
+        if self._use_gr_shader and self._gr_mode == "geodesic":
+            shader_path = _GEODESIC_SHADER_PATH
+        elif self._use_gr_shader:
+            shader_path = _GR_SHADER_PATH
+        else:
+            shader_path = _SHADER_PATH
         shader_source = shader_path.read_text(encoding="utf-8")
         self._shader_module = wgpu_dev.create_shader_module(code=shader_source)
 
@@ -234,13 +262,14 @@ class WebGPUSplatRenderer:
         deflection_scale = (
             4.0 * GRAVITATIONAL_CONSTANT / (SPEED_OF_LIGHT_M_S * SPEED_OF_LIGHT_M_S)
         )
+        if self._gr_mode == "geodesic":
+            enable_flag = 1.0 if self._black_hole is not None else 0.0
+            step_size = float(self._geodesic_step_size)
+        else:
+            enable_flag = 1.0 if self._enable_lensing else 0.0
+            step_size = 0.0
         bh_params_v4 = np.array(
-            [
-                1.0 if self._enable_lensing else 0.0,
-                float(r_s),
-                float(deflection_scale),
-                0.0,
-            ],
+            [enable_flag, float(r_s), float(deflection_scale), step_size],
             dtype=np.float32,
         )
 

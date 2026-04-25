@@ -725,3 +725,49 @@ CosmicEngine is a data-driven, physics-grounded, AI-assisted cosmic perception e
   scales. The resulting PPMs differ dramatically: 1.1k → 21k →
   20.9k visible pixels, with the black-hole mode redistributing
   the field around the lens.
+
+## Phase 29: Geodesic ray marching
+
+- Stepwise photon trajectory integration replaces Phase 28's single-
+  impulse deflection with a per-step bend, producing curved paths
+  rather than a one-shot rotation:
+  - `apps/ai_viewer/neural_field/gr/geodesic.py` —
+    `schwarzschild_acceleration` (toward-mass `2GM/r²`, with a
+    velocity placeholder for a future GR upgrade) and
+    `integrate_geodesic_step(position, direction, step_size, mass_kg)`
+    that rotates direction by `dθ = 2GMs/(c²r²)` per step (capped at
+    π/4) and advances the position by `step_size`.
+  - `apps/ai_viewer/neural_field/gr/ray_marcher.py` —
+    `GeodesicRayMarcher(black_hole, step_size, max_steps)` runs a
+    fixed-iteration loop over `integrate_geodesic_step` and returns
+    `(final_direction, absorbed)`. Validates positive `step_size`
+    / `max_steps`; rays crossing the event horizon are absorbed;
+    the final direction is renormalized to scrub float drift over
+    many cos/sin updates.
+  - `trace_points_through_geodesic(points, marcher, observer)`
+    drops absorbed points and lenses the rest by replacing each
+    point's apparent direction with the marched final direction
+    (distance preserved exactly).
+- New WGSL shader at
+  `apps/ai_viewer/neural_field/gpu/shaders/geodesic_splat.wgsl`
+  unrolls the same algorithm into a fixed `GEODESIC_STEPS = 8`
+  loop in the vertex stage. Per-step length goes through
+  `bh_params.w`. With `enable_geodesic = 0` the shader is a no-op.
+- `WebGPUSplatRenderer.enable_gr_effects(...)` now takes
+  `gr_mode: "none" | "lensing" | "geodesic"`, `geodesic_steps`,
+  and `geodesic_step_size`. Switching to `"geodesic"` swaps the
+  shader on the next render and feeds the step size through the
+  same uniform block (still 7 × vec4, padded to 256 bytes).
+- `AIViewerConfig` adds `gr_mode: str = "lensing"` (validated
+  against the same three values), `geodesic_steps: int = 8`, and
+  `geodesic_step_size: float = 1e9` (both validated positive).
+- All math bounded: per-step deflection capped at π/4, zero
+  direction passes through, zero mass / origin skip the bend, the
+  marcher always terminates within `max_steps`, and every code
+  path has explicit no-NaN tests.
+- Demo at `examples/geodesic_blackhole_demo.py` renders a 20k
+  galaxy field in three modes (no-GR / lensing / geodesic) with
+  the same black hole. Visible-pixel counts: 1,077 → 33,689 →
+  12,629; the geodesic mode absorbs 792 rays into the event
+  horizon and produces a more concentrated bend pattern than the
+  single-impulse lensing approximation.

@@ -43,6 +43,10 @@ class AIViewerConfig:
     black_hole_mass_kg: float | None = None
     black_hole_position: tuple[float, float, float] | None = None
 
+    gr_mode: str = "lensing"
+    geodesic_steps: int = 8
+    geodesic_step_size: float = 1.0e9
+
     def validate(self) -> None:
         """Raise :class:`ValueError` if any field is invalid."""
         if not self.server_host:
@@ -98,3 +102,12 @@ class AIViewerConfig:
                 raise ValueError(
                     "black_hole_position must be a 3-tuple of floats"
                 )
+        if self.gr_mode not in ("none", "lensing", "geodesic"):
+            raise ValueError(
+                f"gr_mode must be 'none', 'lensing', or 'geodesic'; "
+                f"got {self.gr_mode!r}"
+            )
+        if self.geodesic_steps <= 0:
+            raise ValueError("geodesic_steps must be positive")
+        if self.geodesic_step_size <= 0.0:
+            raise ValueError("geodesic_step_size must be positive")

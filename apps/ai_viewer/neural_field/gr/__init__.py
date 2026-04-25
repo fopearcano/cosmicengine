@@ -12,16 +12,28 @@ from ai_viewer.neural_field.gr.black_hole import (
     BlackHole,
     apply_black_hole_to_points,
 )
+from ai_viewer.neural_field.gr.geodesic import (
+    integrate_geodesic_step,
+    schwarzschild_acceleration,
+)
 from ai_viewer.neural_field.gr.lensing import (
     apply_lensing,
     apply_lensing_to_points,
     compute_deflection_angle,
 )
+from ai_viewer.neural_field.gr.ray_marcher import (
+    GeodesicRayMarcher,
+    trace_points_through_geodesic,
+)
 
 __all__ = [
     "BlackHole",
+    "GeodesicRayMarcher",
     "apply_black_hole_to_points",
     "apply_lensing",
     "apply_lensing_to_points",
     "compute_deflection_angle",
+    "integrate_geodesic_step",
+    "schwarzschild_acceleration",
+    "trace_points_through_geodesic",
 ]
