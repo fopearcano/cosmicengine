@@ -1,49 +1,93 @@
-"""Approximate redshift → distance helpers.
+"""Redshift → distance helpers with selectable cosmology mode.
 
-Uses the linear Hubble law:
+Two cosmology modes are available:
 
-    v = z * c
-    d = v / H0
+- ``"lcdm"`` (default): flat ΛCDM via numerical Simpson integration of
+  ``c / H(z)``; see :mod:`cosmic_engine.physics.cosmology_lcdm`.
+- ``"hubble"``: linear Hubble law ``v = z·c, d = v / H₀``. Valid only
+  for ``z ≲ 0.3``; kept for backwards compatibility and quick checks.
 
-with ``H0 = 70 km/s/Mpc``. This is **only** a low-redshift
-approximation (good to a few percent for ``z ≲ 0.3``). It ignores
-spatial curvature, the cosmological constant, matter density, and
-peculiar velocities. Treat it as a placeholder until a proper
-ΛCDM distance integrator lands.
+Switch globally with :func:`set_cosmology_mode`.
 """
 
 from __future__ import annotations
 
 from cosmic_engine.core.units import LIGHTYEAR_IN_METERS, SPEED_OF_LIGHT_M_S
-
-
-# Hubble constant in km/s per Mpc (Planck-ish reference value).
-HUBBLE_CONSTANT_KM_S_MPC: float = 70.0
-
-# 1 Mpc in meters; used only to convert H0 into SI.
-_MPC_IN_METERS: float = 3.0856775814913673e22
-
-# Hubble constant expressed as 1/s, so v = H0 * d works in SI directly.
-HUBBLE_CONSTANT_PER_S: float = (
-    HUBBLE_CONSTANT_KM_S_MPC * 1_000.0 / _MPC_IN_METERS
+from cosmic_engine.physics.cosmology_lcdm import (
+    H0_KM_S_MPC,
+    H0_to_SI,
+    angular_diameter_distance_m,
+    comoving_distance_m,
+    distance_modulus,
+    luminosity_distance_m,
 )
 
 
+# --- mode selection ---------------------------------------------------
+
+_MODE: str = "lcdm"
+
+
+def set_cosmology_mode(mode: str) -> None:
+    """Switch the global cosmology mode (``"lcdm"`` or ``"hubble"``)."""
+    global _MODE
+    if mode not in ("lcdm", "hubble"):
+        raise ValueError(
+            f"unknown cosmology mode {mode!r}; expected 'lcdm' or 'hubble'"
+        )
+    _MODE = mode
+
+
+def get_cosmology_mode() -> str:
+    """Return the current global cosmology mode."""
+    return _MODE
+
+
+# --- legacy Hubble-law constants (kept for backwards compatibility) ---
+
+HUBBLE_CONSTANT_KM_S_MPC: float = H0_KM_S_MPC
+HUBBLE_CONSTANT_PER_S: float = H0_to_SI(HUBBLE_CONSTANT_KM_S_MPC)
+
+
+# --- public helpers ----------------------------------------------------
+
+
 def redshift_to_velocity(z: float) -> float:
-    """Return ``v ≈ z * c`` in m/s (low-redshift approximation)."""
+    """Return ``v ≈ z · c`` in m/s. Independent of cosmology mode."""
     return float(z) * SPEED_OF_LIGHT_M_S
 
 
-def redshift_to_distance_m(z: float) -> float:
-    """Return Hubble-law distance in meters.
-
-    Valid only for small ``z`` (≲ 0.3). Future replacement should swap
-    this for a comoving / luminosity / proper-distance integrator that
-    accounts for curvature, dark energy, and matter density.
-    """
+def _hubble_distance_m(z: float) -> float:
+    """Linear Hubble-law distance in meters (small-z only)."""
     return redshift_to_velocity(z) / HUBBLE_CONSTANT_PER_S
 
 
+def redshift_to_distance_m(z: float) -> float:
+    """Return the redshift → distance value for the active mode.
+
+    ``"lcdm"`` (default) returns the flat-ΛCDM comoving distance.
+    ``"hubble"`` returns the linear Hubble-law distance.
+    """
+    if _MODE == "lcdm":
+        return comoving_distance_m(float(z))
+    return _hubble_distance_m(float(z))
+
+
 def redshift_to_distance_lightyears(z: float) -> float:
-    """Return Hubble-law distance in light-years."""
+    """Return the active-mode redshift → distance in light-years."""
     return redshift_to_distance_m(z) / LIGHTYEAR_IN_METERS
+
+
+__all__ = [
+    "HUBBLE_CONSTANT_KM_S_MPC",
+    "HUBBLE_CONSTANT_PER_S",
+    "angular_diameter_distance_m",
+    "comoving_distance_m",
+    "distance_modulus",
+    "get_cosmology_mode",
+    "luminosity_distance_m",
+    "redshift_to_distance_lightyears",
+    "redshift_to_distance_m",
+    "redshift_to_velocity",
+    "set_cosmology_mode",
+]

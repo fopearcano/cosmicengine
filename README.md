@@ -153,3 +153,29 @@ CosmicEngine is a data-driven, physics-grounded, AI-assisted cosmic perception e
   ΛCDM cosmology and Astropy are still out of scope.
 - Sample data at `data/sample_desi_like.csv`; demo at
   `examples/desi_like_demo.py` writes `output_desi_like.ppm`.
+
+## Phase 11: ΛCDM cosmology
+
+- Flat-ΛCDM model implemented in
+  `cosmic_engine.physics.cosmology_lcdm` (Ω_m = 0.3, Ω_Λ = 0.7,
+  H₀ = 70 km/s/Mpc): dimensionless expansion rate `E(z)`, in-house
+  Simpson integrator (`integrate_simpson`), comoving distance
+  `D_C(z) = (c/H₀)·∫₀ᶻ dz'/E(z')`, plus `luminosity_distance_m`
+  (`D_L = (1+z)·D_C`), `angular_diameter_distance_m`
+  (`D_A = D_C/(1+z)`), and `distance_modulus` (`μ = 5·log₁₀(D_L/10 pc)`).
+- `cosmology.py` now switches between modes via
+  `set_cosmology_mode("lcdm" | "hubble")`; **default is `"lcdm"`**.
+  `redshift_to_distance_m` and `redshift_to_distance_lightyears`
+  delegate accordingly; the Hubble-law path is preserved for
+  backwards compatibility and quick checks.
+- DESI-like loader records `metadata["distance_model"]` (the active
+  mode) and, when `magnitude` is provided, the
+  `metadata["absolute_magnitude"]` from the distance modulus.
+- Still simplified: flat geometry only; no radiation, neutrinos, or
+  evolving dark energy equation of state. For sub-percent precision
+  beyond `z ≈ 3` swap in a proper integrator (Astropy / camb) once
+  those become acceptable dependencies.
+- Demo at `examples/lcdm_vs_hubble_demo.py` shows the divergence
+  between Hubble and ΛCDM distances over `z ∈ [0.01, 1.0]` and
+  reports the `data/sample_desi_like.csv` distance ranges in both
+  modes.

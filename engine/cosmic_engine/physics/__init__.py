@@ -10,15 +10,27 @@ without touching call sites.
 from cosmic_engine.physics.cosmology import (
     HUBBLE_CONSTANT_KM_S_MPC,
     HUBBLE_CONSTANT_PER_S,
+    angular_diameter_distance_m,
+    comoving_distance_m,
+    distance_modulus,
+    get_cosmology_mode,
+    luminosity_distance_m,
     redshift_to_distance_lightyears,
     redshift_to_distance_m,
     redshift_to_velocity,
+    set_cosmology_mode,
 )
 
 __all__ = [
     "HUBBLE_CONSTANT_KM_S_MPC",
     "HUBBLE_CONSTANT_PER_S",
+    "angular_diameter_distance_m",
+    "comoving_distance_m",
+    "distance_modulus",
+    "get_cosmology_mode",
+    "luminosity_distance_m",
     "redshift_to_distance_lightyears",
     "redshift_to_distance_m",
     "redshift_to_velocity",
+    "set_cosmology_mode",
 ]

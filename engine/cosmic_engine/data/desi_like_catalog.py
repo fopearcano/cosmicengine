@@ -13,13 +13,18 @@ step that will speak DESI's actual schema.
 from __future__ import annotations
 
 import logging
+import math
 
 from cosmic_engine.core.coordinates import ra_dec_distance_to_cartesian
 from cosmic_engine.core.registry import UniverseRegistry
+from cosmic_engine.core.units import PARSEC_IN_METERS
 from cosmic_engine.core.universe_object import UniverseObject
 from cosmic_engine.cosmos.galaxy import GalaxyProperties, create_galaxy_object
 from cosmic_engine.data.catalog_loader import load_csv
-from cosmic_engine.physics.cosmology import redshift_to_distance_m
+from cosmic_engine.physics.cosmology import (
+    get_cosmology_mode,
+    redshift_to_distance_m,
+)
 
 _LOG = logging.getLogger(__name__)
 
@@ -58,13 +63,25 @@ def _parse_row(row: dict[str, str]) -> UniverseObject | None:
         redshift_z=z,
         apparent_magnitude=magnitude,
     )
-    return create_galaxy_object(
+    obj = create_galaxy_object(
         id=obj_id,
         name=obj_id,
         position_m=position,
         properties=properties,
         source="desi_like_csv",
     )
+    obj.metadata["distance_model"] = get_cosmology_mode()
+
+    if magnitude is not None and distance_m > 0.0:
+        d_l_m = (1.0 + z) * distance_m
+        d_l_pc = d_l_m / PARSEC_IN_METERS
+        # μ = 5·log10(d_L / 10 pc); M = m - μ
+        mu = 5.0 * (math.log10(d_l_pc) - 1.0)
+        obj.metadata["absolute_magnitude"] = magnitude - mu
+    else:
+        obj.metadata["absolute_magnitude"] = None
+
+    return obj
 
 
 def load_desi_like_catalog(file_path: str) -> list[UniverseObject]:
