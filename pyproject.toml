@@ -12,6 +12,7 @@ dependencies = [
     "onnxruntime>=1.17",
     "pillow>=10",
     "wgpu>=0.20",
+    "torch>=2.0",
 ]
 
 [tool.setuptools.packages.find]

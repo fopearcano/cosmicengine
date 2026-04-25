@@ -10,3 +10,4 @@ dist/
 examples/output_*.ppm
 examples/output_*.json
 outputs/
+models/

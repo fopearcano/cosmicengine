@@ -820,3 +820,41 @@ CosmicEngine is a data-driven, physics-grounded, AI-assisted cosmic perception e
   model's pull-toward-origin acceleration nudges more rays into
   the event horizon. With `--model /missing.onnx` the fallback
   produces identical output to the analytical run.
+
+## Phase 31: Training neural spacetime
+
+- New training package at `cosmic_engine.ai.training` lets you
+  generate a supervised dataset from analytical Schwarzschild
+  acceleration, fit a small MLP on CPU, and export it to an ONNX
+  file the runtime `ONNXSpacetimeField` reads natively. PyTorch
+  is **only** imported by submodules in this package — runtime /
+  inference paths still take no torch dependency.
+  - `SpacetimeDataset(num_samples, mass_kg, radius_range, seed)`
+    samples uniform-in-log radii on a 3D ball, draws random unit
+    directions, and labels every row with the analytical
+    acceleration (vectorized via `schwarzschild_acceleration_batch`).
+    All construction args validated.
+  - `SpacetimeMLP(r_char, a_char, hidden=64)` is a 6 → 64 → 64 →
+    64 → 3 ReLU MLP (~9k params) with input position rescaled by
+    `r_char` and output rescaled by `a_char` *inside the forward
+    pass*. The exported ONNX therefore speaks raw SI units.
+  - `train_model(dataset, epochs, batch_size, learning_rate)`
+    derives `r_char` (geometric mean of the radius range) and
+    `a_char` (= `2GM/r_char²`) from the dataset, runs Adam + MSE,
+    and returns `(model, per_epoch_losses)`.
+  - `export_to_onnx(model, output_path)` writes the trained model
+    with `(N, 6) → (N, 3)` shape and dynamic batch axis.
+- New runtime dependency: `torch>=2.0` (CPU wheels). Importing the
+  engine never triggers a torch import; only `cosmic_engine.ai.training.*`
+  pulls it in.
+- Demo at `examples/train_spacetime_model.py` trains for 20
+  epochs over 100k samples on a tight radius range
+  (`2e10..5e10` m) in ~5 s and writes
+  `models/spacetime_field.onnx` (gitignored). Loss reduces from
+  `3.3e-3` → `4.7e-6` (~700× reduction).
+- Demo at `examples/test_trained_spacetime_model.py` loads the
+  trained ONNX into the runtime `ONNXSpacetimeField`, runs
+  inference on 2k held-out samples, and reports avg / median
+  relative error and cosine similarity. After the bundled training
+  run: avg `|err/truth| ≈ 1.9%`, median `≈ 1.5%`, cosine similarity
+  `≈ 0.9998`.
