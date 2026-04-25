@@ -574,3 +574,39 @@ CosmicEngine is a data-driven, physics-grounded, AI-assisted cosmic perception e
 - Demo at `examples/gaussian_splat_demo.py` builds 50k synthetic
   galaxies, projects them, and writes
   `outputs/viewer/output_gaussian.ppm`.
+
+## Phase 25: Relativistic neural field fusion
+
+- Phase 21/22 perception transforms now apply directly to Gaussian
+  fields. `apps/ai_viewer/neural_field/field_warp.py` adds:
+  - `warp_gaussian_point(point, observer, ai_model=None)` — converts
+    each `GaussianPoint` to a `PhotonSample`, runs it through the
+    existing deterministic / AI photon transform, then reconstructs
+    the point with the warped direction expressed as a position
+    rotation around the observer at the same distance. Always
+    returns a fresh point; the input is never mutated. Sigma grows
+    gently with `warp_factor**0.25`.
+  - `warp_gaussian_field(points, observer, ai_model=None,
+    max_points=None)` — the batch wrapper, deterministic, empty-list
+    safe, with an optional truncation knob.
+- `GaussianPoint` now carries `object_id`, `truth_level`, and
+  `metadata`; the warp records `original_position`, `warp_factor`,
+  and a `warped` flag in the metadata so callers can trace what
+  moved where. The galaxy → field builder propagates the source
+  galaxy's id and truth level.
+- `GaussianSplatRenderer(width, height, camera, normalize_exposure=True)`
+  now scrubs non-finite pixels with `np.nan_to_num` before
+  tone-mapping, so an extreme warp can't poison the frame; the
+  final image is always clamped to `[0, 255]`.
+- `AIViewerConfig` adds `enable_field_warp: bool = False` and
+  `field_warp_mode: str = "deterministic"` (`"none" | "deterministic"
+  | "ai"`, validated). Existing `render_mode` and `gaussian_*`
+  fields are unchanged.
+- Demo at `examples/relativistic_gaussian_field_demo.py` warps a
+  20k-galaxy Gaussian field at `warp_factor ∈ {1, 5, 50}` and writes
+  `outputs/viewer/output_gaussian_warp_{1,5,50}.ppm`. Visible
+  effect: as warp_factor grows, the field compresses toward the
+  forward axis (455 → 152 → 105 visible splats) and the Doppler
+  blueshift saturates (avg blue 18 → 23 → 45, avg red collapses to
+  0), exactly the perception behavior Phase 4 introduced for
+  point samples — now applied to a continuous field.

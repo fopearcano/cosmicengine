@@ -32,6 +32,9 @@ class AIViewerConfig:
     gaussian_sigma_scale: float = 1.0
     max_gaussian_points: int = 50_000
 
+    enable_field_warp: bool = False
+    field_warp_mode: str = "deterministic"
+
     def validate(self) -> None:
         """Raise :class:`ValueError` if any field is invalid."""
         if not self.server_host:
@@ -67,3 +70,8 @@ class AIViewerConfig:
             raise ValueError("gaussian_sigma_scale must be positive")
         if self.max_gaussian_points <= 0:
             raise ValueError("max_gaussian_points must be positive")
+        if self.field_warp_mode not in ("none", "deterministic", "ai"):
+            raise ValueError(
+                f"field_warp_mode must be 'none', 'deterministic', or "
+                f"'ai'; got {self.field_warp_mode!r}"
+            )

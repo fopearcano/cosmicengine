@@ -38,6 +38,8 @@ def build_gaussian_field_from_galaxy_batch(
                 color=batch.colors_rgb[i],
                 intensity=float(batch.brightness[i]),
                 sigma=sigma,
+                object_id=batch.object_ids[i],
+                truth_level=batch.truth_levels[i],
             )
         )
     return points

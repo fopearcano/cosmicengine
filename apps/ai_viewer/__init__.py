@@ -14,6 +14,8 @@ from ai_viewer.neural_field import (
     GaussianSplatRenderer,
     build_gaussian_field_from_density,
     build_gaussian_field_from_galaxy_batch,
+    warp_gaussian_field,
+    warp_gaussian_point,
 )
 from ai_viewer.neural_postprocess import ONNXFrameProcessor
 from ai_viewer.neural_warp_viewer import NeuralWarpViewer
@@ -48,4 +50,6 @@ __all__ = [
     "build_gaussian_field_from_density",
     "build_gaussian_field_from_galaxy_batch",
     "build_postprocessor_from_config",
+    "warp_gaussian_field",
+    "warp_gaussian_point",
 ]

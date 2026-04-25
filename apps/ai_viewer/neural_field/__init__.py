@@ -10,6 +10,10 @@ from ai_viewer.neural_field.field_builder import (
     build_gaussian_field_from_density,
     build_gaussian_field_from_galaxy_batch,
 )
+from ai_viewer.neural_field.field_warp import (
+    warp_gaussian_field,
+    warp_gaussian_point,
+)
 from ai_viewer.neural_field.gaussian import GaussianPoint
 from ai_viewer.neural_field.splat_renderer import GaussianSplatRenderer
 
@@ -18,4 +22,6 @@ __all__ = [
     "GaussianSplatRenderer",
     "build_gaussian_field_from_density",
     "build_gaussian_field_from_galaxy_batch",
+    "warp_gaussian_field",
+    "warp_gaussian_point",
 ]

@@ -33,12 +33,15 @@ class GaussianSplatRenderer:
         width: int,
         height: int,
         camera: SimpleCamera,
+        *,
+        normalize_exposure: bool = True,
     ) -> None:
         if width <= 0 or height <= 0:
             raise ValueError("width and height must be positive")
         self.width = width
         self.height = height
         self.camera = camera
+        self.normalize_exposure = normalize_exposure
         camera.validate()
 
     # --- internals --------------------------------------------------------
@@ -134,8 +137,18 @@ class GaussianSplatRenderer:
             color_buf[y0:y1, x0:x1, 1] += kernel * point.color[1]
             color_buf[y0:y1, x0:x1, 2] += kernel * point.color[2]
 
-        peak = float(color_buf.max())
-        if not math.isfinite(peak) or peak <= 0.0:
-            return color_buf.astype(np.uint8)
-        normalized = np.clip(color_buf / peak * 255.0, 0.0, 255.0)
-        return normalized.astype(np.uint8)
+        # Replace any non-finite contributions before tone-mapping so an
+        # extreme warp can't poison the whole frame with NaNs / infs.
+        if not np.isfinite(color_buf).all():
+            color_buf = np.nan_to_num(
+                color_buf, nan=0.0, posinf=255.0, neginf=0.0
+            )
+
+        if self.normalize_exposure:
+            peak = float(color_buf.max())
+            if not math.isfinite(peak) or peak <= 0.0:
+                return color_buf.astype(np.uint8)
+            normalized = color_buf / peak * 255.0
+        else:
+            normalized = color_buf
+        return np.clip(normalized, 0.0, 255.0).astype(np.uint8)
