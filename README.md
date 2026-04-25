@@ -310,3 +310,29 @@ CosmicEngine is a data-driven, physics-grounded, AI-assisted cosmic perception e
 - Demo at `examples/runtime_demo.py` runs three frames (baseline,
   physics step, perception-enabled) and writes
   `output_runtime_demo.ppm` plus per-frame `SceneState` JSON.
+
+## Phase 17: Live runtime server
+
+- `cosmic_engine.runtime.RuntimeServer` exposes `CosmicRuntime` over a
+  plain TCP socket as a stream of newline-delimited JSON messages.
+  `start()` opens a listening socket on `host:port` (port 0 lets the
+  OS pick a free port); a background tick thread runs
+  `runtime.step(period)` at `tick_rate_hz` and a background accept
+  thread enrolls new subscribers.
+- `broadcast_state(scene_state)` sends a
+  `{"type": "scene_state", "data": ...}` message to every connection
+  every tick. `broadcast_frame(image_path)` is opt-in and emits a
+  `{"type": "frame", "data": "<base64>"}` message on demand.
+- `run_streaming_frame(runtime, camera, observer)` writes a PPM into
+  `runtime.config.output_directory` and returns
+  `(SceneState, frame_path)` so a server (or any caller) can decide
+  whether to embed the frame in its broadcast.
+- `scene_state_to_json` and `encode_frame_to_base64` live in
+  `runtime/stream.py` for client-side use.
+- Standard library only (`socket`, `threading`, `time`, `base64`,
+  `json`); no GUI, GPU, or networking framework. No authentication —
+  intended for trusted local consumers (AI viewer, Unreal bridge,
+  web client).
+- Demos at `examples/runtime_server_demo.py` (starts a server for
+  three seconds) and `examples/runtime_client_demo.py` (connects and
+  prints a few `SceneState` messages).

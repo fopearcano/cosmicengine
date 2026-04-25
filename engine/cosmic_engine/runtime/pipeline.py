@@ -8,6 +8,9 @@ frame in tests, demos, and offline batch jobs.
 
 from __future__ import annotations
 
+import time
+from pathlib import Path
+
 from cosmic_engine.core.object_types import CosmicObjectType
 from cosmic_engine.core.vector import Vector3
 from cosmic_engine.perception.observer import ObserverState
@@ -108,3 +111,21 @@ def run_headless_frame(
     ] + notes
     runtime.last_scene_state = state
     return state
+
+
+def run_streaming_frame(
+    runtime: CosmicRuntime,
+    camera: SimpleCamera,
+    observer: ObserverState,
+) -> tuple[SceneState, str]:
+    """Run a frame and write the PPM into ``runtime.config.output_directory``.
+
+    Returns ``(state, frame_path)`` so a streaming server can decide
+    whether to embed the frame in its broadcast or keep just the
+    SceneState message.
+    """
+    out_dir = Path(runtime.config.output_directory)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    frame_path = out_dir / f"frame_{int(time.time() * 1_000)}.ppm"
+    state = run_headless_frame(runtime, camera, observer, output_path=str(frame_path))
+    return state, str(frame_path)
