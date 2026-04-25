@@ -37,18 +37,43 @@ class GaussianSplatPipeline:
         self,
         points: list[GaussianPoint],
         camera: SimpleCamera,
+        observer=None,
     ) -> np.ndarray:
         """Render via the configured backend, falling back to CPU on demand."""
         buffer = GPUGaussianBuffer.from_gaussian_points(points)
         backend = self.device.get_backend()
         if not self.device.is_available() or backend == "none":
-            # No device available — fall back to CPU silently.
             return self._fallback.render(buffer, camera)
+        if backend == "webgpu":
+            return self._webgpu_render(points, camera, observer, buffer)
         if backend == "mock_gpu":
             return self._mock_gpu_render(buffer, camera)
         return self._fallback.render(buffer, camera)
 
     # --- backends --------------------------------------------------------
+
+    def _webgpu_render(
+        self,
+        points: list[GaussianPoint],
+        camera: SimpleCamera,
+        observer,
+        buffer: GPUGaussianBuffer,
+    ) -> np.ndarray:
+        """Real WebGPU path; falls back to CPU on any failure."""
+        from ai_viewer.neural_field.gpu.webgpu_device import WebGPUDevice
+        from ai_viewer.neural_field.gpu.webgpu_renderer import (
+            WebGPUSplatRenderer,
+        )
+
+        if not isinstance(self.device, WebGPUDevice) or self.device.device is None:
+            return self._fallback.render(buffer, camera)
+        try:
+            renderer = WebGPUSplatRenderer(
+                self.device, camera.image_width, camera.image_height
+            )
+            return renderer.render(points, camera, observer)
+        except Exception:
+            return self._fallback.render(buffer, camera)
 
     def _mock_gpu_render(
         self,

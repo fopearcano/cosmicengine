@@ -10,7 +10,7 @@ implementation.
 from __future__ import annotations
 
 
-_VALID_BACKENDS = ("none", "cpu", "mock_gpu")
+_VALID_BACKENDS = ("none", "cpu", "mock_gpu", "webgpu")
 
 
 class GPUDevice:

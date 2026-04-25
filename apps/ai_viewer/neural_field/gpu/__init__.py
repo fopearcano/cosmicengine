@@ -12,10 +12,16 @@ from ai_viewer.neural_field.gpu.buffer import GPUGaussianBuffer
 from ai_viewer.neural_field.gpu.device import GPUDevice
 from ai_viewer.neural_field.gpu.fallback import CPUSplatFallback
 from ai_viewer.neural_field.gpu.splat_pipeline import GaussianSplatPipeline
+from ai_viewer.neural_field.gpu.webgpu_buffer import WebGPUGaussianBuffer
+from ai_viewer.neural_field.gpu.webgpu_device import WebGPUDevice
+from ai_viewer.neural_field.gpu.webgpu_renderer import WebGPUSplatRenderer
 
 __all__ = [
     "CPUSplatFallback",
     "GPUDevice",
     "GPUGaussianBuffer",
     "GaussianSplatPipeline",
+    "WebGPUDevice",
+    "WebGPUGaussianBuffer",
+    "WebGPUSplatRenderer",
 ]

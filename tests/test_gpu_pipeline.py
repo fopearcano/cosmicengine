@@ -235,7 +235,7 @@ def test_ai_viewer_gaussian_with_gpu_flag_prints_pipeline_info(capsys):
     )
     AIViewer(cfg, _StubClient())
     out = capsys.readouterr().out
-    assert "GPU mock" in out
+    assert "GPU pipeline" in out
 
 
 def test_ai_viewer_gaussian_without_gpu_flag_prints_cpu(capsys):

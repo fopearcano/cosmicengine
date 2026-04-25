@@ -36,6 +36,8 @@ class AIViewerConfig:
     field_warp_mode: str = "deterministic"
 
     use_gpu_pipeline: bool = False
+    gpu_backend: str = "auto"
+    enable_shader_warp: bool = True
 
     def validate(self) -> None:
         """Raise :class:`ValueError` if any field is invalid."""
@@ -76,4 +78,9 @@ class AIViewerConfig:
             raise ValueError(
                 f"field_warp_mode must be 'none', 'deterministic', or "
                 f"'ai'; got {self.field_warp_mode!r}"
+            )
+        if self.gpu_backend not in ("auto", "webgpu", "cpu"):
+            raise ValueError(
+                f"gpu_backend must be 'auto', 'webgpu', or 'cpu'; "
+                f"got {self.gpu_backend!r}"
             )

@@ -46,14 +46,18 @@ class AIViewer:
         self.client = client
         self.window = window
         if config.render_mode == "gaussian":
-            pipeline = (
-                "GPU mock (GaussianSplatPipeline)"
-                if config.use_gpu_pipeline
-                else "CPU (GaussianSplatRenderer)"
+            if config.use_gpu_pipeline:
+                resolved = self._resolve_gpu_backend(config.gpu_backend)
+                pipeline_label = f"GPU pipeline backend={resolved}"
+            else:
+                pipeline_label = "CPU (GaussianSplatRenderer)"
+            warp_label = (
+                "in-shader" if config.enable_shader_warp else "off"
             )
             print(
                 f"AIViewer note: render_mode='gaussian' bypasses server "
-                f"PPM frames; drive {pipeline} directly for that path"
+                f"PPM frames; drive {pipeline_label} (warp: {warp_label}) "
+                "directly for that path"
             )
         if postprocessor is None:
             if config.render_mode == "gaussian":
@@ -90,6 +94,18 @@ class AIViewer:
         if isinstance(proc, SafeProcessor):
             return f"SafeProcessor({type(proc.wrapped).__name__})"
         return type(proc).__name__
+
+    @staticmethod
+    def _resolve_gpu_backend(requested: str) -> str:
+        """Translate ``config.gpu_backend`` into the actual backend used."""
+        if requested == "cpu":
+            return "cpu"
+        try:
+            from ai_viewer.neural_field.gpu.webgpu_device import WebGPUDevice
+        except Exception:
+            return "cpu"
+        device = WebGPUDevice()
+        return device.get_backend()
 
     # --- scene-state rendering -------------------------------------------
 

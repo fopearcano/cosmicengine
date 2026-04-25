@@ -640,3 +640,41 @@ CosmicEngine is a data-driven, physics-grounded, AI-assisted cosmic perception e
   both backends. On this machine: CPU 1870 ms, `mock_gpu` 1766 ms
   (~1.06× — the mock is mostly architectural; real speedup arrives
   with a real GPU kernel).
+
+## Phase 27: Real GPU rendering
+
+- New WebGPU backend at `apps/ai_viewer/neural_field/gpu/`:
+  - `WebGPUDevice(GPUDevice)` tries `wgpu.gpu.request_adapter_sync` +
+    `request_device_sync` on construction. On failure (no GPU /
+    drivers / display) it downgrades silently to `backend="cpu"`
+    and records the cause in `last_error`. `is_available()` stays
+    `True` so the pipeline still has a usable target.
+  - `WebGPUGaussianBuffer` packs Gaussian points into a 32-byte
+    storage layout (`pos.xyz, intensity, color.rgb, sigma`),
+    uploads to a GPU `STORAGE | COPY_DST` buffer, and keeps a CPU
+    shadow so tests can verify the layout without a GPU.
+  - `apps/ai_viewer/neural_field/gpu/shaders/splat.wgsl` is the
+    real WGSL shader. The vertex stage runs the relativistic
+    direction warp + Doppler color shift **in-shader** so the GPU
+    sees pre-warped Gaussians; the fragment stage evaluates
+    `exp(-r²/(2σ²))` over a 3-σ quad with additive blending.
+  - `WebGPUSplatRenderer(device, width, height)` initializes a
+    pipeline, renders to an off-screen RGBA texture, and reads it
+    back to a NumPy array. Raises `RuntimeError` when the device
+    isn't real WebGPU; the pipeline catches that and falls back to
+    CPU.
+- `GaussianSplatPipeline.render(points, camera, observer=None)`
+  now dispatches `webgpu` → real GPU path → CPU fallback on any
+  exception, with `mock_gpu` and `cpu` paths preserved.
+- `AIViewerConfig` adds `gpu_backend: str = "auto"` (`"auto" |
+  "webgpu" | "cpu"`, validated) and `enable_shader_warp: bool =
+  True`. `AIViewer` resolves the active backend and prints a note
+  describing pipeline + warp mode.
+- New runtime dependency: `wgpu>=0.20`. Importing the engine never
+  requires a GPU — adapter probing is lazy and graceful.
+- Demo at `examples/webgpu_splat_demo.py` renders 200k points
+  through both paths. On a host without a GPU adapter the demo
+  reports the resolved backend, the underlying error, and falls
+  back to CPU for both runs (~3.7 s for 200k points / 256×256). On
+  a host with a real WebGPU adapter the second run uses the GPU
+  pipeline.
