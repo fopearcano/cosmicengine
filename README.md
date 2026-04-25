@@ -503,3 +503,42 @@ CosmicEngine is a data-driven, physics-grounded, AI-assisted cosmic perception e
   take (≈150× speedup).
 - Per-sample `ONNXPhotonWarpModel` is preserved for small fields and
   for cases where one needs per-photon control flow.
+
+## Phase 23: Streaming and LOD
+
+- New `cosmic_engine.streaming` package adds three primitives:
+  - `SpatialIndex(cell_size_m)` — hashed uniform-grid index with
+    `insert` / `build` / `query_cell` / `query_radius`. Pure
+    Python, deterministic, no external libs.
+  - `TileStore(data_directory)` — JSON-on-disk tile reader/writer
+    with `save_tile` / `load_tile` / `list_tiles` /  `has_tile`,
+    plus `partition_objects_into_tiles(objects, cell_size_m)` that
+    buckets a registry into tile-shaped JSON files keyed by cell
+    index.
+  - `compute_lod_weight(distance)` and
+    `select_lod_objects(objects, observer, max_objects, seed=42)`
+    — inverse-square-distance weighted, sampling without replacement
+    via NumPy's `default_rng` for deterministic frame-to-frame
+    selection that preserves the spatial distribution.
+- `CosmicRuntime` integrations:
+  - New optional fields `spatial_index` and `tile_store` (both
+    default `None` so existing behavior is unchanged).
+  - `build_spatial_index(cell_size_m)` builds an in-memory grid over
+    the current registry.
+  - `enable_streaming(cell_size_m, data_directory, clear_registry=True,
+    cache_size=16)` partitions the registry to disk, optionally
+    empties the in-memory registry, and configures an LRU tile
+    cache.
+  - `select_active_objects(observer)` now picks candidates from the
+    spatial index → or tile-store-with-cache → or the in-memory
+    registry, then runs the LOD selector to cap at
+    `config.max_active_objects`. `last_loaded_tiles` records which
+    tiles a frame touched.
+- File-based JSON tiles only — no databases, no multiprocessing,
+  no GPU. The current registry-cleared path keeps memory bounded
+  by the cache, not the dataset.
+- Demo at `examples/streaming_lod_demo.py` partitions 200k synthetic
+  galaxies into ~4,900 tiles (~102 MiB on disk), clears the in-memory
+  registry, and walks an observer through the field reporting
+  per-step tiles touched, cache size, and active-object count
+  (LOD-bounded at 5,000 per frame).
