@@ -20,6 +20,16 @@ from cosmic_engine.physics.cosmology import (
     redshift_to_velocity,
     set_cosmology_mode,
 )
+from cosmic_engine.physics.nbody import (
+    GRAVITATIONAL_CONSTANT,
+    NBodySimulator,
+    NBodyState,
+    apply_nbody_state_to_objects,
+    compute_accelerations,
+    euler_step,
+    leapfrog_step,
+    objects_to_nbody_state,
+)
 from cosmic_engine.physics.orbital import (
     OrbitalElements,
     mean_motion,
@@ -29,16 +39,24 @@ from cosmic_engine.physics.orbital import (
 from cosmic_engine.physics.solar_system import create_solar_system_objects
 
 __all__ = [
+    "GRAVITATIONAL_CONSTANT",
     "HUBBLE_CONSTANT_KM_S_MPC",
     "HUBBLE_CONSTANT_PER_S",
+    "NBodySimulator",
+    "NBodyState",
     "OrbitalElements",
     "angular_diameter_distance_m",
+    "apply_nbody_state_to_objects",
     "comoving_distance_m",
+    "compute_accelerations",
     "create_solar_system_objects",
     "distance_modulus",
+    "euler_step",
     "get_cosmology_mode",
+    "leapfrog_step",
     "luminosity_distance_m",
     "mean_motion",
+    "objects_to_nbody_state",
     "orbital_position_from_elements",
     "redshift_to_distance_lightyears",
     "redshift_to_distance_m",

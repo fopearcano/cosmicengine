@@ -233,3 +233,26 @@ CosmicEngine is a data-driven, physics-grounded, AI-assisted cosmic perception e
 - Demo at `examples/solar_system_physics_demo.py` advances a
   `SimulationClock` by 30 days and prints Earth/Mars position deltas;
   also writes an `output_solar_system.json` snapshot.
+
+## Phase 14: N-body physics
+
+- Newtonian local N-body backend in
+  `cosmic_engine.physics.nbody`: `NBodyState` dataclass with
+  `validate()`, `objects_to_nbody_state` /
+  `apply_nbody_state_to_objects` for round-tripping with
+  `UniverseObject`, `compute_accelerations(positions, masses, softening)`
+  vectorized direct-summation gravity, `GRAVITATIONAL_CONSTANT`
+  (6.67430e−11 m³/kg/s²).
+- Two integrators: `euler_step` (testing only, not symplectic) and
+  `leapfrog_step` (kick-drift-kick velocity-Verlet, **preferred**
+  for orbital stability).
+- `NBodySimulator` wraps state + integrator selection with
+  `step(dt)` / `run(steps, dt)` / `get_state()`. Validates dt > 0,
+  unsupported integrator, negative softening.
+- Suitable for local gravitational systems and experiments — **not**
+  for galaxy-scale dynamics. No tree-code, FMM, mesh, relativity, or
+  GPU acceleration. Keplerian orbital module remains the analytic
+  reference.
+- Demo at `examples/nbody_solar_demo.py` simulates Sun + Earth + Mars
+  for 90 days at 1-hour leapfrog steps; Earth-Sun distance stays
+  stable to within a few microns of an AU.
