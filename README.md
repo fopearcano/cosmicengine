@@ -542,3 +542,35 @@ CosmicEngine is a data-driven, physics-grounded, AI-assisted cosmic perception e
   registry, and walks an observer through the field reporting
   per-step tiles touched, cache size, and active-object count
   (LOD-bounded at 5,000 per frame).
+
+## Phase 24: Neural field rendering
+
+- New `apps/ai_viewer/neural_field/` package adds a CPU-only
+  Gaussian-splatting renderer that turns discrete galaxy / density
+  samples into a continuous visual field — a first step toward
+  neural rendering.
+  - `GaussianPoint` carries a 3D position, RGB color, scalar
+    intensity, and a world-space `sigma`.
+  - `build_gaussian_field_from_galaxy_batch(batch, sigma_scale=1.0)`
+    builds one point per galaxy with sigma proportional to distance.
+  - `build_gaussian_field_from_density(grid, threshold, cell_size_m)`
+    samples a 3D density grid into points, skipping cells at or
+    below the threshold.
+  - `GaussianSplatRenderer(width, height, camera)` projects each
+    point through the camera basis, computes a screen-space sigma
+    from world sigma and depth, splats a 2D Gaussian
+    (`I·exp(-r²/(2σ²))`) over a 3-σ bounding box into a float
+    accumulator, and tone-maps by max-channel normalization.
+- `AIViewerConfig` adds `render_mode: "ppm" | "gaussian"`,
+  `gaussian_sigma_scale: float = 1.0`, and
+  `max_gaussian_points: int = 50_000`. `render_mode="gaussian"`
+  switches `AIViewer` to a passthrough postprocessor and prints a
+  note that the gaussian path is driven through `NeuralWarpViewer`
+  / `GaussianSplatRenderer` directly (the network client doesn't
+  see 3D objects).
+- Pure NumPy; loops over points, vectorizes each footprint. ~50k
+  splats render to a 256×256 frame in ~0.8 s on CPU. GPU
+  acceleration is the next phase.
+- Demo at `examples/gaussian_splat_demo.py` builds 50k synthetic
+  galaxies, projects them, and writes
+  `outputs/viewer/output_gaussian.ppm`.

@@ -9,6 +9,12 @@ replaced later by a Vulkan / WebGPU / neural renderer.
 from ai_viewer.client import RuntimeClient
 from ai_viewer.config import AIViewerConfig
 from ai_viewer.frame_buffer import FrameBuffer
+from ai_viewer.neural_field import (
+    GaussianPoint,
+    GaussianSplatRenderer,
+    build_gaussian_field_from_density,
+    build_gaussian_field_from_galaxy_batch,
+)
 from ai_viewer.neural_postprocess import ONNXFrameProcessor
 from ai_viewer.neural_warp_viewer import NeuralWarpViewer
 from ai_viewer.postprocess import (
@@ -32,10 +38,14 @@ __all__ = [
     "ContrastBoostProcessor",
     "FrameBuffer",
     "FramePostProcessor",
+    "GaussianPoint",
+    "GaussianSplatRenderer",
     "NeuralWarpViewer",
     "ONNXFrameProcessor",
     "RuntimeClient",
     "SafeProcessor",
     "ViewerWindow",
+    "build_gaussian_field_from_density",
+    "build_gaussian_field_from_galaxy_batch",
     "build_postprocessor_from_config",
 ]

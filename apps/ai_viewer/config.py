@@ -28,6 +28,10 @@ class AIViewerConfig:
     use_photon_warp: bool = False
     photon_warp_model_path: str | None = None
 
+    render_mode: str = "ppm"
+    gaussian_sigma_scale: float = 1.0
+    max_gaussian_points: int = 50_000
+
     def validate(self) -> None:
         """Raise :class:`ValueError` if any field is invalid."""
         if not self.server_host:
@@ -54,3 +58,12 @@ class AIViewerConfig:
             raise ValueError("neural_input_width must be positive")
         if self.neural_input_height is not None and self.neural_input_height <= 0:
             raise ValueError("neural_input_height must be positive")
+        if self.render_mode not in ("ppm", "gaussian"):
+            raise ValueError(
+                f"render_mode must be 'ppm' or 'gaussian'; "
+                f"got {self.render_mode!r}"
+            )
+        if self.gaussian_sigma_scale <= 0.0:
+            raise ValueError("gaussian_sigma_scale must be positive")
+        if self.max_gaussian_points <= 0:
+            raise ValueError("max_gaussian_points must be positive")

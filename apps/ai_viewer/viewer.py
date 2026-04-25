@@ -45,8 +45,18 @@ class AIViewer:
         self.config = config
         self.client = client
         self.window = window
+        if config.render_mode == "gaussian":
+            print(
+                "AIViewer note: render_mode='gaussian' bypasses server "
+                "PPM frames; drive NeuralWarpViewer / GaussianSplatRenderer "
+                "directly for that path"
+            )
         if postprocessor is None:
-            if config.use_photon_warp:
+            if config.render_mode == "gaussian":
+                # In gaussian mode, image postprocess is meaningless because
+                # the viewer is not the one rendering pixels.
+                postprocessor = FramePostProcessor()
+            elif config.use_photon_warp:
                 # Photon-space warping happens at the source; the viewer
                 # should not double-process the resulting image.
                 if not config.photon_warp_model_path:
