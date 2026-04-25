@@ -1,0 +1,11 @@
+source_id,ra,dec,parallax_mas,phot_g_mean_mag,bp_rp
+gaia_alpha_centauri,219.9,-60.8,742.1,-0.27,0.71
+gaia_sirius,101.3,-16.7,379.2,-1.46,0.01
+gaia_vega,279.2,38.8,128.9,0.03,0.02
+gaia_betelgeuse,88.8,7.4,5.95,0.42,1.85
+gaia_procyon,114.8,5.2,285.0,0.34,0.43
+gaia_rigel,78.6,-8.2,3.78,0.13,-0.03
+gaia_polaris,37.9,89.3,7.54,1.98,0.64
+gaia_capella,79.2,46.0,76.2,0.08,0.81
+gaia_aldebaran,68.9,16.5,49.2,0.85,1.54
+gaia_antares,247.4,-26.4,5.89,1.06,1.83

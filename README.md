@@ -179,3 +179,33 @@ CosmicEngine is a data-driven, physics-grounded, AI-assisted cosmic perception e
   between Hubble and ΛCDM distances over `z ∈ [0.01, 1.0]` and
   reports the `data/sample_desi_like.csv` distance ranges in both
   modes.
+
+## Phase 12: Real survey ingestion
+
+- Multi-source ingestion at `cosmic_engine.data.sources`: a
+  `DataSource` enum (`DESI`, `SDSS`, `GAIA`, `NASA`, `JPL`,
+  `SYNTHETIC`), `tag_source(obj, source)` that stamps the source
+  field and a `metadata["data_source"]` key, and `load_catalog(path,
+  source)` / `load_catalog_into_registry` that dispatch to the
+  per-survey loader.
+- Per-survey loaders (offline CSV only):
+  - `data/gaia_catalog.load_gaia_like_catalog` — Gaia-style stars
+    (`source_id, ra, dec, parallax_mas, phot_g_mean_mag, bp_rp`).
+    Distance via `d_pc = 1000 / ϖ_mas`; non-positive parallaxes
+    skipped.
+  - `data/sdss_catalog.load_sdss_like_catalog` — SDSS-style galaxies
+    (`objid, ra, dec, z, modelMag_r`).
+  - `data/desi_catalog.load_desi_catalog` — DESI-style galaxies
+    (`targetid, ra, dec, z, mag`). The legacy
+    `desi_like_catalog.load_desi_like_catalog` (with
+    `id, ra_deg, …` columns) remains available for backwards
+    compatibility.
+- JPL placeholder at `data/jpl_ephemeris.load_jpl_ephemeris_placeholder`
+  / `load_jpl_into_registry` returns a frozen Sun / Earth / Mars
+  snapshot tagged `truth_level=EPHEMERIS_REAL`. Not a real SPICE
+  ingest.
+- Real APIs / FITS / SPICE kernels are **not** wired up; ingestion
+  is offline CSV today.
+- Sample data: `data/sample_gaia_like.csv`, `data/sample_sdss_like.csv`,
+  `data/sample_desi.csv`. Demo at `examples/multi_catalog_demo.py`
+  combines all four sources and writes `output_multi_catalog.ppm`.
