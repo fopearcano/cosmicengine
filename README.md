@@ -133,3 +133,23 @@ CosmicEngine is a data-driven, physics-grounded, AI-assisted cosmic perception e
   (no PyTorch / TensorFlow / GPU; NumPy + ONNX Runtime only).
 - Demo at `examples/density_ai_demo.py` writes
   `output_density_{original,simple,ai}.ppm`.
+
+## Phase 10: Cosmology ingestion
+
+- Basic redshift → distance mapping implemented in
+  `cosmic_engine.physics.cosmology` via the linear Hubble law
+  (`H0 = 70 km/s/Mpc`): `redshift_to_velocity`,
+  `redshift_to_distance_m`, `redshift_to_distance_lightyears`.
+  Documented as **valid only at low z (≲ 0.3)** and explicitly a
+  placeholder for a future ΛCDM integrator.
+- DESI-like catalog ingestion at
+  `cosmic_engine.data.desi_like_catalog.load_desi_like_catalog` /
+  `load_desi_into_registry` accepts `id, ra_deg, dec_deg,
+  redshift_z, magnitude`, runs each row through the Hubble-law
+  distance and the existing RA/Dec → Cartesian conversion, and emits
+  `UniverseObject` galaxies tagged `truth_level=CATALOG_IMPORTED`,
+  `source="desi_like_csv"`. Invalid / negative-z rows are skipped.
+- Real DESI APIs / FITS / network access are **not** wired up; full
+  ΛCDM cosmology and Astropy are still out of scope.
+- Sample data at `data/sample_desi_like.csv`; demo at
+  `examples/desi_like_demo.py` writes `output_desi_like.ppm`.
