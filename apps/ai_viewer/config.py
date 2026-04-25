@@ -55,6 +55,7 @@ class AIViewerConfig:
 
     observer_id: str | None = None
     verbose_audit: bool = False
+    show_feedback: bool = False
 
     def validate(self) -> None:
         """Raise :class:`ValueError` if any field is invalid."""

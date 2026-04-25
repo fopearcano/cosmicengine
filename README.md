@@ -1229,3 +1229,93 @@ CosmicEngine is a data-driven, physics-grounded, AI-assisted cosmic perception e
   triggers the warning, reality rules record their labels,
   empty-registry render doesn't crash, to_dict surfaces
   both new fields).
+
+## Phase 37: Self-improving reality
+
+- New package `cosmic_engine.adaptive` adds an opt-in,
+  deterministic, fully-auditable feedback layer that measures
+  discrepancies between analytical references and neural / AI
+  approximations, **suggests** model or rule updates, but never
+  mutates anything itself.
+  - `FeedbackRecord(id, observer_id, timestamp_t, context,
+    metric_name, metric_value, expected_value, deviation,
+    source, notes)`. Validates non-empty id / metric_name /
+    source and non-negative deviation; `to_dict()`.
+  - `compute_acceleration_error(analytical, predicted)` →
+    relative-L2 vector error. `compute_direction_error(a, p)`
+    → `1 − cos(θ)` ∈ `[0, 2]` with degenerate inputs returning
+    the maximum (no NaNs). `compute_brightness_error(a, p)`
+    → relative scalar error. All three floor the denominator
+    at `1e-30` so a zero reference doesn't divide by zero.
+  - `AdaptivePolicy(error_threshold=0.10, window_size=32,
+    sustained_fraction=0.5, max_updates_per_run=1)` exposes
+    every threshold as a constructor parameter (rejects
+    invalid values). `should_record` records anything above
+    threshold. `should_update_model / should_update_rules`
+    require the *full* most-recent window for that source AND
+    `sustained_fraction` of it over threshold (so a few noisy
+    spikes can't trigger drift suggestions).
+  - `AdaptiveEngine(policy=None)`: `record_feedback(record)`
+    returns a bool (kept or filtered out). `evaluate()`
+    returns at most `policy.max_updates_per_run` suggestions
+    *deterministically* — model first, rules second — each
+    citing the exact `feedback_ids` that motivated it plus
+    `mean_deviation` / `window_size`. `reset_run()` clears
+    the per-run counter when the caller wants a fresh
+    suggestion budget. `summary()` reports
+    `record_count / by_source / max_deviation /
+    mean_deviation`. Log capacity is bounded at `4 ×
+    window_size` (FIFO) so long runs don't grow without
+    bound.
+- `CosmicRuntime.adaptive_engine` (`None` by default, opt-in).
+  When set, `render_for_observer` probes the observer's
+  attached models:
+  - For `spacetime_model`: queries
+    `query_acceleration(observer_position + probe_radius·x̂)`
+    against analytical Schwarzschild for a configurable
+    reference mass (`observer.config['adaptive_reference_mass_kg']`,
+    default 1 M☉; `adaptive_probe_radius_m` default 1e9 m).
+  - For `ai_warp_model`: queries `predict_direction(observer.forward)`
+    against the deterministic `apply_direction_warp`.
+
+  Both produce `FeedbackRecord`s, hand them to
+  `adaptive_engine.record_feedback`, and call `evaluate()` so
+  any matured suggestions land on the produced view.
+- `RealityView` gained two top-level fields:
+  `feedback_summary: dict` (record_count, by_source,
+  max_deviation, mean_deviation) and
+  `adaptive_suggestions: list[dict]`. Both surface in
+  `to_dict()` / `summary()` and on the
+  `RuntimeServer.broadcast_observer_view` wire payload.
+- `AIViewerConfig.show_feedback = False` toggles a verbose
+  per-message dump of the feedback summary plus every
+  suggestion's action + reason; the always-on print adds
+  `suggestions=N` to the standard line.
+- Demo at `examples/adaptive_engine_demo.py` builds a
+  `_DriftingSpacetime` model that returns analytical
+  Schwarzschild scaled by 1.30 (a flat 30 % relative-L2
+  deviation), attaches it to an observer with a tight
+  `AdaptivePolicy(threshold=0.10, window_size=5,
+  sustained_fraction=0.6, max_updates_per_run=4)`, and renders
+  8 frames. Every probe records `deviation = 0.3000`; once the
+  window fills (step 4) every subsequent frame emits the same
+  `retrain_spacetime_model` suggestion citing the 5 feedback
+  ids that motivated it. The no-mutation check confirms the
+  observer's `spacetime_model` is the original instance,
+  `bias = 1.30` is unchanged, `runtime.reality_rule_engine` is
+  still `None`, and `observer.warp_factor = 1.0`.
+- 31 new tests in `tests/test_adaptive_engine.py` cover all
+  three metrics (zero-on-identical / relative-L2 /
+  shape-mismatch / orthogonal / antiparallel / degenerate /
+  zero-truth-with-eps), `FeedbackRecord` validation
+  (non-negative deviation, non-empty id/metric/source,
+  to_dict round-trip), `AdaptivePolicy` (threshold filter,
+  invalid-input rejection, full-window requirement,
+  sustained-fraction logic, source filtering),
+  `AdaptiveEngine` (below-threshold drop, no suggestion under
+  window, model retrain on sustained drift, max_updates_per_run
+  budget, reset_run), and runtime integration (no engine →
+  empty fields, drifted spacetime model emits retrain
+  suggestion, no-mutation invariant across multiple frames,
+  AI warp drift records ai_warp feedback, to_dict surfaces
+  the new fields).

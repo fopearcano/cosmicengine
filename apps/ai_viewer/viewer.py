@@ -190,13 +190,16 @@ class AIViewer:
         ) or "scientific"
         provenance = message.get("provenance_summary") or {}
         warnings = message.get("audit_warnings") or []
+        feedback = message.get("feedback_summary") or {}
+        suggestions = message.get("adaptive_suggestions") or []
         print(
             f"observer={observer_id} "
             f"warp_factor={effective_warp} "
             f"spacetime={meta.get('spacetime_model')} "
             f"rep={message.get('representation_type')} "
             f"tau={tau_str} t={t_str} events={n_events} "
-            f"mode={mode} rules={rules_str} warnings={len(warnings)}"
+            f"mode={mode} rules={rules_str} "
+            f"warnings={len(warnings)} suggestions={len(suggestions)}"
         )
         if self.config.verbose_audit:
             tcounts = provenance.get("truth_level_counts") or {}
@@ -206,6 +209,17 @@ class AIViewer:
             )
             for w in warnings:
                 print(f"  audit_warning: {w}")
+        if self.config.show_feedback and feedback:
+            print(
+                f"  feedback records={feedback.get('record_count')} "
+                f"max_dev={feedback.get('max_deviation', 0.0):.4f} "
+                f"by_source={feedback.get('by_source', {})}"
+            )
+            for s in suggestions:
+                print(
+                    f"  adaptive_suggestion: {s.get('action')} "
+                    f"(reason: {s.get('reason')})"
+                )
         frame_payload = message.get("frame")
         if isinstance(frame_payload, dict) and frame_payload.get("data"):
             self._handle_frame({"type": "frame", "data": frame_payload["data"]})

@@ -38,6 +38,8 @@ class RealityView:
     reality_metadata: dict[str, Any] = field(default_factory=dict)
     provenance_summary: dict[str, Any] = field(default_factory=dict)
     audit_warnings: list[str] = field(default_factory=list)
+    feedback_summary: dict[str, Any] = field(default_factory=dict)
+    adaptive_suggestions: list[dict[str, Any]] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         """Return a JSON-friendly dict (frame data is reported by shape)."""
@@ -61,6 +63,8 @@ class RealityView:
             "reality_metadata": dict(self.reality_metadata),
             "provenance_summary": dict(self.provenance_summary),
             "audit_warnings": list(self.audit_warnings),
+            "feedback_summary": dict(self.feedback_summary),
+            "adaptive_suggestions": [dict(s) for s in self.adaptive_suggestions],
         }
 
     def summary(self) -> str:
@@ -72,10 +76,11 @@ class RealityView:
         warp_str = f"warp={warp}" if warp is not None else "warp=?"
         rules_str = ",".join(self.active_rule_ids) or "-"
         n_warn = len(self.audit_warnings)
+        n_sugg = len(self.adaptive_suggestions)
         return (
             f"observer={self.observer_id} rep={self.representation_type} "
             f"objects={n_obj} {warp_str} spacetime={model} "
             f"τ={self.proper_time_tau:.3f} t={self.coordinate_time_t:.3f} "
             f"events={self.visible_event_count} rules={rules_str} "
-            f"warnings={n_warn}"
+            f"warnings={n_warn} suggestions={n_sugg}"
         )

@@ -113,6 +113,11 @@ class CosmicRuntime:
         # registers every UniverseObject as it's added and accumulates
         # per-pipeline transformation labels.
         self.truth_tracker: TruthTracker = TruthTracker()
+        # Adaptive feedback engine (Phase 37). ``None`` is opt-out;
+        # set the field to an :class:`AdaptiveEngine` to enable
+        # discrepancy collection + bounded update suggestions.
+        self.adaptive_engine = None
+        self._feedback_id_counter: int = 0
 
     # --- ingestion --------------------------------------------------------
 
@@ -500,6 +505,13 @@ class CosmicRuntime:
             rep_objects, samples, pipeline_transformations
         )
 
+        # Adaptive feedback (Phase 37). Feedback collection + suggestion
+        # emission only run when the runtime has an adaptive engine
+        # attached — single-observer / scientific paths pay zero cost.
+        feedback_summary, adaptive_suggestions = self._collect_adaptive_feedback(
+            observer
+        )
+
         view = RealityView(
             observer_id=observer.id,
             scene_state=scene_state,
@@ -518,6 +530,8 @@ class CosmicRuntime:
                 "output_ppm_path": str(out_path) if out_path else None,
                 "visible_event_ids": [e.id for e in visible_events],
                 "provenance_summary": provenance_summary,
+                "feedback_summary": feedback_summary,
+                "adaptive_suggestions": adaptive_suggestions,
             },
             proper_time_tau=float(observer.proper_time_tau),
             coordinate_time_t=float(observer.coordinate_time_t),
@@ -525,6 +539,8 @@ class CosmicRuntime:
             active_rule_ids=list(rule_context.active_rule_ids),
             reality_metadata=dict(rule_context.metadata),
             provenance_summary=provenance_summary,
+            feedback_summary=feedback_summary,
+            adaptive_suggestions=adaptive_suggestions,
         )
         # Run the audit *after* the view is fully assembled so the
         # warning detector sees the final reality_metadata + scene_state.
@@ -532,6 +548,144 @@ class CosmicRuntime:
 
         view.audit_warnings = detect_truth_mixing(view)
         return view
+
+    def _collect_adaptive_feedback(self, observer):
+        """Compare analytical references against this observer's models.
+
+        Produces a list of :class:`FeedbackRecord` for each
+        discrepancy, hands them to :attr:`adaptive_engine`, and
+        returns ``(feedback_summary, adaptive_suggestions)``.
+
+        When ``self.adaptive_engine`` is ``None`` returns
+        ``({}, [])`` — single-observer / scientific paths pay zero
+        cost.
+        """
+        if self.adaptive_engine is None:
+            return {}, []
+
+        import numpy as _np
+
+        from cosmic_engine.adaptive.feedback import FeedbackRecord
+        from cosmic_engine.adaptive.metrics import (
+            compute_acceleration_error,
+            compute_direction_error,
+        )
+
+        ctx_base = {
+            "coordinate_time_t": float(observer.coordinate_time_t),
+            "warp_factor": float(observer.warp_factor),
+            "beta": float(observer.beta()),
+        }
+
+        # 1) Neural spacetime model vs analytical Schwarzschild.
+        if observer.spacetime_model is not None:
+            ref_mass = float(
+                observer.config.get(
+                    "adaptive_reference_mass_kg", 1.989e30  # solar mass
+                )
+            )
+            # Probe a scale-appropriate offset from the observer's
+            # current position. We avoid probing at the origin to keep
+            # the analytical reference well-conditioned.
+            probe_radius = float(
+                observer.config.get("adaptive_probe_radius_m", 1.0e9)
+            )
+            probe_position = _np.array(
+                [
+                    observer.position_m.x + probe_radius,
+                    observer.position_m.y,
+                    observer.position_m.z,
+                ],
+                dtype=_np.float64,
+            )
+            r_vec = probe_position
+            r = float(_np.linalg.norm(r_vec))
+            if r > 0.0:
+                analytical = (
+                    -2.0
+                    * 6.67430e-11
+                    * ref_mass
+                    / (r * r * r)
+                ) * r_vec
+                try:
+                    predicted = _np.asarray(
+                        observer.spacetime_model.query_acceleration(
+                            probe_position
+                        ),
+                        dtype=_np.float64,
+                    )
+                    deviation = compute_acceleration_error(
+                        analytical, predicted
+                    )
+                    self._feedback_id_counter += 1
+                    fid = (
+                        f"st-{observer.id}-{self._feedback_id_counter:06d}"
+                    )
+                    record = FeedbackRecord(
+                        id=fid,
+                        observer_id=observer.id,
+                        timestamp_t=float(observer.coordinate_time_t),
+                        context={**ctx_base, "probe_radius_m": probe_radius,
+                                 "reference_mass_kg": ref_mass},
+                        metric_name="acceleration_relative_l2",
+                        metric_value=float(_np.linalg.norm(predicted)),
+                        expected_value=float(_np.linalg.norm(analytical)),
+                        deviation=float(deviation),
+                        source="spacetime_model",
+                    )
+                    self.adaptive_engine.record_feedback(record)
+                except Exception:  # pragma: no cover - defensive
+                    pass
+
+        # 2) AI warp direction vs deterministic aberration.
+        if observer.ai_warp_model is not None:
+            from cosmic_engine.perception.observer import ObserverState
+            from cosmic_engine.perception.transform import apply_direction_warp
+
+            obs_state = ObserverState(
+                position_m=observer.position_m,
+                velocity_m_s=observer.velocity_m_s,
+                forward=observer.forward,
+                up=observer.up,
+                warp_factor=observer.warp_factor,
+            )
+            from cosmic_engine.core.vector import Vector3 as _V3
+
+            probe_direction = _V3(
+                observer.forward.x,
+                observer.forward.y,
+                observer.forward.z,
+            )
+            try:
+                deterministic = apply_direction_warp(probe_direction, obs_state)
+                predicted = observer.ai_warp_model.predict_direction(
+                    probe_direction, obs_state
+                )
+                a = _np.array(
+                    [deterministic.x, deterministic.y, deterministic.z]
+                )
+                p = _np.array([predicted.x, predicted.y, predicted.z])
+                deviation = compute_direction_error(a, p)
+                self._feedback_id_counter += 1
+                fid = f"ai-{observer.id}-{self._feedback_id_counter:06d}"
+                record = FeedbackRecord(
+                    id=fid,
+                    observer_id=observer.id,
+                    timestamp_t=float(observer.coordinate_time_t),
+                    context={**ctx_base},
+                    metric_name="direction_one_minus_cos",
+                    metric_value=float(deviation),
+                    expected_value=0.0,
+                    deviation=float(deviation),
+                    source="ai_warp",
+                )
+                self.adaptive_engine.record_feedback(record)
+            except Exception:  # pragma: no cover - defensive
+                pass
+
+        feedback_summary = self.adaptive_engine.summary()
+        adaptive_suggestions = self.adaptive_engine.evaluate()
+        return feedback_summary, adaptive_suggestions
 
     def _build_provenance_summary(
         self,

@@ -192,6 +192,8 @@ class RuntimeServer:
             "reality_metadata": payload_dict["reality_metadata"],
             "provenance_summary": payload_dict["provenance_summary"],
             "audit_warnings": payload_dict["audit_warnings"],
+            "feedback_summary": payload_dict["feedback_summary"],
+            "adaptive_suggestions": payload_dict["adaptive_suggestions"],
         }
         self._send_message(message, observer_id=view.observer_id)
 
