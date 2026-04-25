@@ -12,13 +12,23 @@ exact same result as before this module existed.
 """
 
 from cosmic_engine.ai.base import AIWarpModel
+from cosmic_engine.ai.density_model import (
+    DensityFieldModel,
+    SimpleDensityEnhancer,
+    enhance_density_field,
+)
+from cosmic_engine.ai.density_onnx import ONNXDensityModel
 from cosmic_engine.ai.neural_warp import SimpleNeuralWarp
 from cosmic_engine.ai.onnx_model import ONNXModelWrapper
 from cosmic_engine.ai.onnx_warp import ONNXWarpModel
 
 __all__ = [
     "AIWarpModel",
+    "DensityFieldModel",
+    "ONNXDensityModel",
     "ONNXModelWrapper",
     "ONNXWarpModel",
+    "SimpleDensityEnhancer",
     "SimpleNeuralWarp",
+    "enhance_density_field",
 ]

@@ -113,3 +113,23 @@ CosmicEngine is a data-driven, physics-grounded, AI-assisted cosmic perception e
 - Sample data at `data/sample_galaxies.csv` (7 Local-Group / nearby
   galaxies); demo at `examples/synthetic_galaxy_cloud_demo.py` writes
   `output_synthetic_galaxies.ppm`.
+
+## Phase 9: AI density reconstruction
+
+- Density grids can now be enhanced by AI models. The
+  `cosmic_engine.ai.density_*` modules add a `DensityFieldModel` base
+  class, a deterministic NumPy-only `SimpleDensityEnhancer`
+  (2× nearest upsample + 3³ box blur + normalize), and an
+  `ONNXDensityModel` that runs a real ONNX session.
+- `enhance_density_field(grid, model)` is the high-level entry point:
+  `model=None` uses the simple enhancer; if a real model raises, the
+  pipeline silently falls back to the simple enhancer so callers
+  never crash.
+- A bundled mock ONNX upscaler at `data/density_upscaler.onnx`
+  (Resize op, 64³ → 128³, 272 bytes) makes the demo and tests run
+  out of the box. Rebuild with
+  `python scripts/build_density_onnx_model.py`.
+- This is the first step toward neural universe reconstruction
+  (no PyTorch / TensorFlow / GPU; NumPy + ONNX Runtime only).
+- Demo at `examples/density_ai_demo.py` writes
+  `output_density_{original,simple,ai}.ppm`.
