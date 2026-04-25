@@ -256,3 +256,29 @@ CosmicEngine is a data-driven, physics-grounded, AI-assisted cosmic perception e
 - Demo at `examples/nbody_solar_demo.py` simulates Sun + Earth + Mars
   for 90 days at 1-hour leapfrog steps; Earth-Sun distance stays
   stable to within a few microns of an AU.
+
+## Phase 15: Barnes-Hut N-body
+
+- Octree-based Barnes-Hut force approximation in
+  `cosmic_engine.physics.barnes_hut`: `OctreeNode` dataclass
+  (`is_leaf`), `build_octree(positions, masses)`,
+  `compute_acceleration_bh(index, node, ...)`, and the batched
+  `compute_accelerations_bh(positions, masses, theta=0.5, softening_m=0.0)`.
+- Reduces the asymptotic cost of the all-pairs gravitational sum
+  from `O(N²)` to roughly `O(N log N)` by treating distant subtrees
+  as a single point mass when `s/d < theta`.
+- `theta` controls the accuracy/speed tradeoff (smaller = more
+  accurate, larger = faster). Default 0.5; observed average relative
+  errors versus the exact direct sum on a 1k-body cluster:
+  `theta=0.3 → ~8e-4`, `theta=0.5 → ~4e-3`, `theta=0.8 → ~2e-2`.
+- `NBodySimulator` accepts `integrator="barnes_hut"` and a `theta`
+  parameter; under the hood it uses leapfrog stepping with the BH
+  acceleration evaluator. The exact `compute_accelerations` remains
+  the reference solver and is unchanged.
+- Pure-Python recursive walk; the asymptotic win shows up at
+  catalogue scales where `O(N²)` becomes infeasible. At small N the
+  vectorized NumPy direct sum still wins on wall-clock time. No
+  GPU, parallelism, or Cython.
+- Demo at `examples/barnes_hut_demo.py` benchmarks both solvers from
+  N=200 to N=5000 across three `theta` values and prints relative
+  errors plus timings.

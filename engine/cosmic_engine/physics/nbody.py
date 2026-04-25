@@ -214,36 +214,81 @@ _INTEGRATORS = {
     "euler": euler_step,
     "leapfrog": leapfrog_step,
 }
+_VALID_INTEGRATORS = ("euler", "leapfrog", "barnes_hut")
+
+
+def _leapfrog_step_with_accel(
+    state: NBodyState,
+    dt_seconds: float,
+    accel_fn,
+) -> NBodyState:
+    _validate_dt(dt_seconds)
+    accel = accel_fn(state.positions_m, state.masses_kg)
+    v_half = state.velocities_m_s + 0.5 * dt_seconds * accel
+    new_positions = state.positions_m + dt_seconds * v_half
+    accel_new = accel_fn(new_positions, state.masses_kg)
+    new_velocities = v_half + 0.5 * dt_seconds * accel_new
+    return NBodyState(
+        object_ids=list(state.object_ids),
+        positions_m=new_positions,
+        velocities_m_s=new_velocities,
+        masses_kg=state.masses_kg.copy(),
+    )
 
 
 class NBodySimulator:
-    """Stateful driver around the integrator functions."""
+    """Stateful driver around the integrator functions.
+
+    ``integrator="barnes_hut"`` uses leapfrog stepping with
+    Barnes–Hut force evaluation (see
+    :mod:`cosmic_engine.physics.barnes_hut`); ``theta`` controls the
+    opening criterion (lower = more accurate, higher = faster).
+    """
 
     def __init__(
         self,
         state: NBodyState,
         softening_m: float = 0.0,
         integrator: str = "leapfrog",
+        theta: float = 0.5,
     ) -> None:
-        if integrator not in _INTEGRATORS:
+        if integrator not in _VALID_INTEGRATORS:
             raise ValueError(
                 f"unknown integrator {integrator!r}; "
-                f"expected one of {sorted(_INTEGRATORS)}"
+                f"expected one of {list(_VALID_INTEGRATORS)}"
             )
         if softening_m < 0.0:
             raise ValueError(
                 f"softening_m must be non-negative; got {softening_m}"
             )
+        if theta <= 0.0:
+            raise ValueError(f"theta must be positive; got {theta}")
         state.validate()
         self.state = state
         self.softening_m = softening_m
         self.integrator = integrator
+        self.theta = theta
 
     def step(self, dt_seconds: float) -> NBodyState:
         """Advance the system by one step and return the new state."""
-        self.state = _INTEGRATORS[self.integrator](
-            self.state, dt_seconds, self.softening_m
-        )
+        if self.integrator == "barnes_hut":
+            # Lazy import keeps the cyclic dependency from nbody → barnes_hut at bay.
+            from cosmic_engine.physics.barnes_hut import (
+                compute_accelerations_bh,
+            )
+
+            def _accel_fn(positions, masses):
+                return compute_accelerations_bh(
+                    positions, masses, self.theta, self.softening_m
+                )
+
+            self.state = _leapfrog_step_with_accel(
+                self.state, dt_seconds, _accel_fn
+            )
+        else:
+            self.state = _INTEGRATORS[self.integrator](
+                self.state, dt_seconds, self.softening_m
+            )
         return self.state
 
     def run(self, steps: int, dt_seconds: float) -> NBodyState:

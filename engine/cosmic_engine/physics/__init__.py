@@ -20,6 +20,12 @@ from cosmic_engine.physics.cosmology import (
     redshift_to_velocity,
     set_cosmology_mode,
 )
+from cosmic_engine.physics.barnes_hut import (
+    OctreeNode,
+    build_octree,
+    compute_acceleration_bh,
+    compute_accelerations_bh,
+)
 from cosmic_engine.physics.nbody import (
     GRAVITATIONAL_CONSTANT,
     NBodySimulator,
@@ -44,11 +50,15 @@ __all__ = [
     "HUBBLE_CONSTANT_PER_S",
     "NBodySimulator",
     "NBodyState",
+    "OctreeNode",
     "OrbitalElements",
     "angular_diameter_distance_m",
     "apply_nbody_state_to_objects",
+    "build_octree",
     "comoving_distance_m",
+    "compute_acceleration_bh",
     "compute_accelerations",
+    "compute_accelerations_bh",
     "create_solar_system_objects",
     "distance_modulus",
     "euler_step",
