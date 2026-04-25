@@ -27,3 +27,7 @@ class TruthLevel(str, Enum):
     PROCEDURAL_APPROXIMATION = "procedural_approximation"
     AI_SURROGATE = "ai_surrogate"
     FICTIONAL_PLACEHOLDER = "fictional_placeholder"
+    # Phase 38: an entire universe synthesized from a UniverseSpec.
+    # Distinct from PROCEDURAL_APPROXIMATION (one-off filler galaxies)
+    # so audit consumers can flag whole-universe synthetic content.
+    SYNTHETIC_GENERATED = "synthetic_generated"

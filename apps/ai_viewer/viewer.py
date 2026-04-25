@@ -161,6 +161,27 @@ class AIViewer:
             self._handle_frame(message)
         return message
 
+    def show_synthesis_info(self, runtime) -> None:
+        """One-line summary of a runtime built from a UniverseSpec.
+
+        Pulls the dynamic ``synthesis_spec`` / ``synthesis_state``
+        attributes :func:`cosmic_engine.synthesis.create_runtime_from_spec`
+        attaches; safely no-ops on a non-synthesized runtime.
+        """
+        spec = getattr(runtime, "synthesis_spec", None)
+        if spec is None:
+            return
+        state = getattr(runtime, "synthesis_state", {}) or {}
+        notes = state.get("constraint_notes") or []
+        constraints = spec.constraints or {}
+        print(
+            f"synthetic_universe id={spec.id} seed={spec.seed} "
+            f"objects={len(state.get('objects', []))} "
+            f"rules={spec.rule_ids or '-'} "
+            f"constraints={constraints} "
+            f"adjustments={len(notes)}"
+        )
+
     def _handle_reality_view(self, message: dict) -> None:
         """Optionally filter by ``config.observer_id`` and print a 1-line note."""
         observer_id = message.get("observer_id")

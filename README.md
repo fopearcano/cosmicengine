@@ -1319,3 +1319,95 @@ CosmicEngine is a data-driven, physics-grounded, AI-assisted cosmic perception e
   suggestion, no-mutation invariant across multiple frames,
   AI warp drift records ai_warp feedback, to_dict surfaces
   the new fields).
+
+## Phase 38: Reality synthesis
+
+- New package `cosmic_engine.synthesis` adds a deterministic,
+  seeded universe generator that builds a complete
+  :class:`CosmicRuntime` from a declarative
+  :class:`UniverseSpec`. Generated content is explicitly tagged
+  ``TruthLevel.SYNTHETIC_GENERATED`` (a new enum value added in
+  this phase) so audit consumers can never confuse it with
+  observed / catalog-imported data.
+  - `UniverseSpec(id, seed, description, scale_limits,
+    initial_conditions, physics_model, spacetime_model,
+    rule_ids, constraints)` is a dataclass with `validate()`
+    (rejects empty id, negative seed, inverted scale_limits,
+    unknown physics / spacetime models from a strict whitelist,
+    invalid object_count / mass_range / velocity_dispersion).
+  - `Constraint` base + `MaxMassConstraint(limit_kg)` and
+    `MaxVelocityConstraint(limit_m_s)` (rejects ≥ c). Both
+    expose `check(state)` and `enforce(state)` returning
+    human-readable adjustment notes; `apply_constraints(state,
+    constraints)` aggregates every note under
+    ``state["constraint_notes"]``. Nothing is silently
+    rewritten without a note.
+  - `UniverseGenerator(spec)`:
+    - `generate_initial_state()` returns a JSON-serializable
+      dict of objects (uniform-in-log radii on a 3D ball,
+      isotropic Gaussian velocities, uniform mass band)
+      generated through `numpy.random.default_rng(spec.seed)`
+      so the same seed yields identical state byte-for-byte.
+      Optional central mass at the origin.
+    - `generate_runtime()` builds a fresh `CosmicRuntime`,
+      registers every generated object as a `UniverseObject`
+      with `truth_level = SYNTHETIC_GENERATED` and
+      `source = spec.id`, attaches the spec's resolved rules
+      via a `RealityRuleEngine`, stamps every provenance
+      record with a `synthesized:<spec.id>` transformation,
+      and stashes the spec + state on the runtime as
+      `synthesis_spec` / `synthesis_state` for later
+      inspection.
+  - `create_runtime_from_spec(spec)` is the one-line
+    convenience entry point.
+- Three presets (all parameterised by `seed`):
+  - `create_standard_physics_universe(seed)` — strict, no
+    rules, capped at `1e35 kg` / `1e6 m/s`.
+  - `create_hyperwarp_universe(seed)` — neural spacetime,
+    `warp_amplification` + `neural_reality` +
+    `redshift_symbolic_color`, capped at `0.17 c`.
+  - `create_symbolic_universe(seed)` — relaxed causality +
+    symbolic redshift + neural perception, capped at
+    `0.67 c`.
+- `AIViewer.show_synthesis_info(runtime)` prints a one-line
+  summary (`id`, `seed`, object count, rule list, constraints,
+  number of constraint adjustments) when the runtime came from
+  the synthesis pipeline; safe no-op otherwise.
+- Demo at `examples/reality_synthesis_demo.py` builds all
+  three presets at `seed = 42`, renders one frame each, and
+  prints per-spec details, a determinism check, and a
+  provenance check:
+
+  | label | spec_id | objects | rules | render samples |
+  |---|---|---:|---|---:|
+  | standard | `standard_physics_42` | 65 | – | 65 |
+  | hyperwarp | `hyperwarp_42` | 97 | warp_amplification, neural_reality, redshift_symbolic_color | 97 |
+  | symbolic | `symbolic_42` | 128 | neural_reality, redshift_symbolic_color, causality_relaxation | 0 |
+
+  - **Determinism**: re-running with the same seed produces
+    identical object ids and identical positions
+    (`ids identical = True`, `positions identical = True`).
+  - **Provenance**: every object across every preset is
+    `truth_level = synthetic_generated`, `source = <spec.id>`;
+    none of the sample-data labels (`gaia`, `sdss`, `desi`,
+    `jpl`) ever appear, so the synthesis path cannot
+    contaminate the real-data registry.
+  - The symbolic universe renders zero photon samples
+    because its synthesized objects are `galaxy` (not
+    `star`) — the existing photon path only emits star
+    samples, which is correct: synthesis declares the
+    content, the renderer decides what to draw.
+- 30 new tests in `tests/test_synthesis.py` cover
+  `UniverseSpec` validation (empty id / negative seed /
+  inverted scale / unknown models / invalid initial
+  conditions), constraint clamp + log + invalid-limit
+  rejection, generator determinism (same seed identical
+  state), divergence under different seeds, zero-object and
+  no-central-mass paths, spec-driven constraint application,
+  generated runtime carries `SYNTHETIC_GENERATED` truth +
+  `spec.id` source + `synthesized:<id>` transformation,
+  rule attachment (and rule-id resolver silently skipping
+  unknown ids), `synthesis_spec` / `synthesis_state`
+  exposure, all three presets validate + carry their
+  expected rule sets, and isolation: the synth path never
+  introduces real-data sources.
