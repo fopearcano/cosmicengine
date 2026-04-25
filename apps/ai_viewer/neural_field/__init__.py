@@ -29,6 +29,7 @@ from ai_viewer.neural_field.gr import (
     apply_lensing_to_points,
     compute_deflection_angle,
     integrate_geodesic_step,
+    integrate_geodesic_step_neural,
     schwarzschild_acceleration,
     trace_points_through_geodesic,
 )
@@ -50,6 +51,7 @@ __all__ = [
     "build_gaussian_field_from_galaxy_batch",
     "compute_deflection_angle",
     "integrate_geodesic_step",
+    "integrate_geodesic_step_neural",
     "schwarzschild_acceleration",
     "trace_points_through_geodesic",
     "warp_gaussian_field",

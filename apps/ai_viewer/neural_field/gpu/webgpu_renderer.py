@@ -30,7 +30,7 @@ _GR_SHADER_PATH = Path(__file__).parent / "shaders" / "gr_splat.wgsl"
 _GEODESIC_SHADER_PATH = (
     Path(__file__).parent / "shaders" / "geodesic_splat.wgsl"
 )
-# Enough room for the GR / geodesic shaders' 7 vec4 uniform block, padded to 256.
+# Enough room for the geodesic shader's 8 vec4 uniform block, padded to 256.
 _UNIFORM_SIZE_BYTES: int = 256
 
 
@@ -54,13 +54,15 @@ class WebGPUSplatRenderer:
         self._readback_buffer = None
         self._shader_module = None
         self._pipeline_initialized = False
-        # GR state (Phase 28 / Phase 29)
+        # GR state (Phase 28 / Phase 29 / Phase 30)
         self._black_hole = None
         self._enable_lensing: bool = False
         self._gr_mode: str = "none"
         self._geodesic_steps: int = 8
         self._geodesic_step_size: float = 1.0e9
         self._use_gr_shader: bool = False
+        self._use_neural_field: bool = False
+        self._neural_confidence: float = 0.0
 
     def enable_gr_effects(
         self,
@@ -69,6 +71,8 @@ class WebGPUSplatRenderer:
         gr_mode: str = "lensing",
         geodesic_steps: int = 8,
         geodesic_step_size: float = 1.0e9,
+        use_neural_field: bool = False,
+        neural_confidence: float = 0.0,
     ) -> None:
         """Wire a black hole + GR mode into the render pass.
 
@@ -93,6 +97,8 @@ class WebGPUSplatRenderer:
         self._gr_mode = gr_mode
         self._geodesic_steps = int(geodesic_steps)
         self._geodesic_step_size = float(geodesic_step_size)
+        self._use_neural_field = bool(use_neural_field)
+        self._neural_confidence = float(neural_confidence)
         self._use_gr_shader = gr_mode != "none" and (
             black_hole is not None or self._enable_lensing
         )
@@ -272,9 +278,28 @@ class WebGPUSplatRenderer:
             [enable_flag, float(r_s), float(deflection_scale), step_size],
             dtype=np.float32,
         )
+        # Phase 30: neural-field flag + confidence; spare slots reserved.
+        neural_params_v4 = np.array(
+            [
+                1.0 if self._use_neural_field else 0.0,
+                float(self._neural_confidence),
+                0.0,
+                0.0,
+            ],
+            dtype=np.float32,
+        )
 
         payload = np.concatenate(
-            [cam_pos, forward_v4, up_v4, right_v4, params, bh_pos_v4, bh_params_v4]
+            [
+                cam_pos,
+                forward_v4,
+                up_v4,
+                right_v4,
+                params,
+                bh_pos_v4,
+                bh_params_v4,
+                neural_params_v4,
+            ]
         ).astype(np.float32)
         # Pad to the uniform buffer size.
         padded = np.zeros(_UNIFORM_SIZE_BYTES // 4, dtype=np.float32)

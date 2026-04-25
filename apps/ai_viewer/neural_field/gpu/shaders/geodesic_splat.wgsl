@@ -17,7 +17,15 @@ struct Uniforms {
     params: vec4<f32>,         // beta, warp, enable_warp, enable_doppler
     bh_position: vec4<f32>,    // xyz, w = mass_kg
     bh_params: vec4<f32>,      // x = enable_geodesic, y = R_s, z = 4G/c^2, w = step_size
+    neural_params: vec4<f32>,  // x = use_neural_field, y = neural_confidence, z/w = reserved
 };
+
+// Phase 30: when neural_params.x > 0.5 the shader currently behaves
+// identically to the analytical path; running the ONNX field inside
+// the vertex stage is future work (it requires a tensor-shader bridge
+// that wgpu does not expose today). The flag is plumbed through so a
+// future GPU upgrade can swap implementations without touching the
+// Python integration layer.
 
 struct GaussianPoint {
     pos_intensity: vec4<f32>,

@@ -22,7 +22,9 @@ from cosmic_engine.ai.neural_warp import SimpleNeuralWarp
 from cosmic_engine.ai.onnx_model import ONNXModelWrapper
 from cosmic_engine.ai.onnx_photon_warp import ONNXPhotonWarpModel
 from cosmic_engine.ai.onnx_photon_warp_batch import BatchONNXPhotonWarpModel
+from cosmic_engine.ai.onnx_spacetime_field import ONNXSpacetimeField
 from cosmic_engine.ai.onnx_warp import ONNXWarpModel
+from cosmic_engine.ai.spacetime_field import SpacetimeFieldModel
 
 __all__ = [
     "AIWarpModel",
@@ -31,8 +33,10 @@ __all__ = [
     "ONNXDensityModel",
     "ONNXModelWrapper",
     "ONNXPhotonWarpModel",
+    "ONNXSpacetimeField",
     "ONNXWarpModel",
     "SimpleDensityEnhancer",
     "SimpleNeuralWarp",
+    "SpacetimeFieldModel",
     "enhance_density_field",
 ]

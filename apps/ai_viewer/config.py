@@ -47,6 +47,9 @@ class AIViewerConfig:
     geodesic_steps: int = 8
     geodesic_step_size: float = 1.0e9
 
+    use_neural_spacetime: bool = False
+    spacetime_model_path: str | None = None
+
     def validate(self) -> None:
         """Raise :class:`ValueError` if any field is invalid."""
         if not self.server_host:
@@ -111,3 +114,8 @@ class AIViewerConfig:
             raise ValueError("geodesic_steps must be positive")
         if self.geodesic_step_size <= 0.0:
             raise ValueError("geodesic_step_size must be positive")
+        if self.use_neural_spacetime and not self.spacetime_model_path:
+            # Allowed: viewer falls back to the analytical path with a
+            # warning. We don't raise here because the demo path
+            # explicitly tests this case.
+            pass

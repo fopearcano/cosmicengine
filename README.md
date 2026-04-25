@@ -771,3 +771,52 @@ CosmicEngine is a data-driven, physics-grounded, AI-assisted cosmic perception e
   12,629; the geodesic mode absorbs 792 rays into the event
   horizon and produces a more concentrated bend pattern than the
   single-impulse lensing approximation.
+
+## Phase 30: Neural spacetime field
+
+- New pluggable interface: `cosmic_engine.ai.SpacetimeFieldModel`
+  with `query_acceleration(position, direction=None)` and
+  `confidence()`. Subclasses can swap in a learned curvature field
+  in place of the analytical Schwarzschild formula.
+- ONNX implementation: `cosmic_engine.ai.ONNXSpacetimeField` runs a
+  CPU `onnxruntime` session over a `(1, 6) → (1, 3)` graph
+  (`[pos.x, pos.y, pos.z, dir.x, dir.y, dir.z] → [a.x, a.y, a.z]`).
+  Construction errors propagate so the caller decides on fallback;
+  inference errors raise `RuntimeError` and store `last_error`.
+  Output is NaN-scrubbed and clamped to a finite magnitude;
+  `confidence()` is `0.9` after a clean run, `0.2` after a failure.
+- New step function:
+  `apps/ai_viewer/neural_field/gr/neural_geodesic.integrate_geodesic_step_neural`
+  uses the model's acceleration when available and silently falls
+  back to the analytical `schwarzschild_acceleration` if the model
+  raises or returns NaNs. Per-step rotation capped at π/4 (same
+  stability bound as Phase 29).
+- `GeodesicRayMarcher` now accepts an optional
+  `spacetime_model: SpacetimeFieldModel | None` parameter; when
+  set, every step routes through `integrate_geodesic_step_neural`.
+  The marcher's existing horizon-absorption + final renormalization
+  contracts are unchanged.
+- `geodesic_splat.wgsl` has a new `neural_params` vec4 with a
+  `use_neural_field` flag. The GPU path currently stays on the
+  analytical formula even when the flag is set — running ONNX
+  inside the vertex stage requires a tensor-shader bridge that
+  isn't part of the wgpu surface yet — but the uniform is plumbed
+  through so a future GPU upgrade is purely additive.
+- `WebGPUSplatRenderer.enable_gr_effects(...)` accepts
+  `use_neural_field` and `neural_confidence`; the uniform block
+  grew to 8 × vec4 (still padded to 256 bytes).
+- `AIViewerConfig` adds `use_neural_spacetime: bool = False` and
+  `spacetime_model_path: str | None = None`. A missing model under
+  `use_neural_spacetime=True` is allowed — the runtime falls back
+  to the analytical path with a warning.
+- A bundled mock spacetime model lives at
+  `data/spacetime_field_identity.onnx` (257 bytes, 6→3 linear
+  MatMul + Add producing `a = -k·position`). Rebuild with
+  `python scripts/build_spacetime_field_model.py`.
+- Demo at `examples/neural_spacetime_demo.py` traces 20k galaxy
+  rays through the marcher in two modes (analytical only / neural
+  with fallback). With the bundled model the neural path absorbs
+  more rays (12,486 surviving vs 19,208 analytical) because the
+  model's pull-toward-origin acceleration nudges more rays into
+  the event horizon. With `--model /missing.onnx` the fallback
+  produces identical output to the analytical run.

@@ -14,6 +14,10 @@ import numpy as np
 from ai_viewer.neural_field.gaussian import GaussianPoint
 from ai_viewer.neural_field.gr.black_hole import BlackHole
 from ai_viewer.neural_field.gr.geodesic import integrate_geodesic_step
+from ai_viewer.neural_field.gr.neural_geodesic import (
+    integrate_geodesic_step_neural,
+)
+from cosmic_engine.ai.spacetime_field import SpacetimeFieldModel
 
 
 class GeodesicRayMarcher:
@@ -24,6 +28,7 @@ class GeodesicRayMarcher:
         black_hole: BlackHole,
         step_size: float,
         max_steps: int,
+        spacetime_model: SpacetimeFieldModel | None = None,
     ) -> None:
         if step_size <= 0.0:
             raise ValueError("step_size must be positive")
@@ -32,6 +37,7 @@ class GeodesicRayMarcher:
         self.black_hole = black_hole
         self.step_size = float(step_size)
         self.max_steps = int(max_steps)
+        self.spacetime_model = spacetime_model
 
     def trace_ray(
         self,
@@ -62,9 +68,18 @@ class GeodesicRayMarcher:
             r = float(np.linalg.norm(position))
             if r <= rs:
                 return d, True
-            position, d = integrate_geodesic_step(
-                position, d, self.step_size, self.black_hole.mass_kg
-            )
+            if self.spacetime_model is not None:
+                position, d = integrate_geodesic_step_neural(
+                    position,
+                    d,
+                    self.step_size,
+                    self.spacetime_model,
+                    self.black_hole.mass_kg,
+                )
+            else:
+                position, d = integrate_geodesic_step(
+                    position, d, self.step_size, self.black_hole.mass_kg
+                )
         # Re-normalize at the end so downstream `observer + d * distance`
         # preserves the distance exactly even after N accumulated cos/sin
         # updates.
