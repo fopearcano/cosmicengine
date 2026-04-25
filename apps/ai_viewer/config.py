@@ -35,6 +35,8 @@ class AIViewerConfig:
     enable_field_warp: bool = False
     field_warp_mode: str = "deterministic"
 
+    use_gpu_pipeline: bool = False
+
     def validate(self) -> None:
         """Raise :class:`ValueError` if any field is invalid."""
         if not self.server_host:

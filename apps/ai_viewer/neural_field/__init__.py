@@ -15,10 +15,20 @@ from ai_viewer.neural_field.field_warp import (
     warp_gaussian_point,
 )
 from ai_viewer.neural_field.gaussian import GaussianPoint
+from ai_viewer.neural_field.gpu import (
+    CPUSplatFallback,
+    GPUDevice,
+    GPUGaussianBuffer,
+    GaussianSplatPipeline,
+)
 from ai_viewer.neural_field.splat_renderer import GaussianSplatRenderer
 
 __all__ = [
+    "CPUSplatFallback",
+    "GPUDevice",
+    "GPUGaussianBuffer",
     "GaussianPoint",
+    "GaussianSplatPipeline",
     "GaussianSplatRenderer",
     "build_gaussian_field_from_density",
     "build_gaussian_field_from_galaxy_batch",

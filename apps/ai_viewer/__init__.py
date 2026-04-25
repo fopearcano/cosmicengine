@@ -10,7 +10,11 @@ from ai_viewer.client import RuntimeClient
 from ai_viewer.config import AIViewerConfig
 from ai_viewer.frame_buffer import FrameBuffer
 from ai_viewer.neural_field import (
+    CPUSplatFallback,
+    GPUDevice,
+    GPUGaussianBuffer,
     GaussianPoint,
+    GaussianSplatPipeline,
     GaussianSplatRenderer,
     build_gaussian_field_from_density,
     build_gaussian_field_from_galaxy_batch,
@@ -38,9 +42,13 @@ __all__ = [
     "ColorShiftProcessor",
     "CompositeProcessor",
     "ContrastBoostProcessor",
+    "CPUSplatFallback",
     "FrameBuffer",
     "FramePostProcessor",
+    "GPUDevice",
+    "GPUGaussianBuffer",
     "GaussianPoint",
+    "GaussianSplatPipeline",
     "GaussianSplatRenderer",
     "NeuralWarpViewer",
     "ONNXFrameProcessor",

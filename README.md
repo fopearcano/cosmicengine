@@ -610,3 +610,33 @@ CosmicEngine is a data-driven, physics-grounded, AI-assisted cosmic perception e
   blueshift saturates (avg blue 18 → 23 → 45, avg red collapses to
   0), exactly the perception behavior Phase 4 introduced for
   point samples — now applied to a continuous field.
+
+## Phase 26: GPU splatting foundation
+
+- New `apps/ai_viewer/neural_field/gpu/` subpackage adds the
+  scaffolding for a future Vulkan / WebGPU / CUDA backend without
+  taking on a real GPU dependency:
+  - `GPUDevice(backend="auto")` resolves to one of `"none"` /
+    `"cpu"` / `"mock_gpu"`. Auto-detect currently returns `"cpu"`;
+    real probes land when a backend is bound.
+  - `GPUGaussianBuffer` is the upload-shaped data view: parallel
+    `(N, 3)` positions / colors and `(N,)` intensities / sigmas with
+    `from_gaussian_points`, `validate`, and `to_numpy` for
+    serialization.
+  - `CPUSplatFallback` re-uses the Phase 24 `GaussianSplatRenderer`
+    so the fallback path is the existing reference renderer.
+  - `GaussianSplatPipeline(device)` selects between the CPU
+    fallback and a vectorized `mock_gpu` renderer that does
+    whole-batch projection and frustum culling in NumPy and only
+    walks visible points to splat.
+- `AIViewerConfig` adds `use_gpu_pipeline: bool = False`. When
+  `render_mode == "gaussian"`, `AIViewer` prints which path
+  (CPU vs GPU mock) downstream callers should drive.
+- All-NumPy implementation; CPU `GaussianSplatRenderer` and Phase 25
+  field warp continue to work unchanged. The mock backend is a
+  stand-in for a future real GPU implementation, not a substitute
+  for one.
+- Demo at `examples/gpu_splat_demo.py` renders 100k points through
+  both backends. On this machine: CPU 1870 ms, `mock_gpu` 1766 ms
+  (~1.06× — the mock is mostly architectural; real speedup arrives
+  with a real GPU kernel).

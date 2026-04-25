@@ -46,10 +46,14 @@ class AIViewer:
         self.client = client
         self.window = window
         if config.render_mode == "gaussian":
+            pipeline = (
+                "GPU mock (GaussianSplatPipeline)"
+                if config.use_gpu_pipeline
+                else "CPU (GaussianSplatRenderer)"
+            )
             print(
-                "AIViewer note: render_mode='gaussian' bypasses server "
-                "PPM frames; drive NeuralWarpViewer / GaussianSplatRenderer "
-                "directly for that path"
+                f"AIViewer note: render_mode='gaussian' bypasses server "
+                f"PPM frames; drive {pipeline} directly for that path"
             )
         if postprocessor is None:
             if config.render_mode == "gaussian":
