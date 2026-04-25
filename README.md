@@ -282,3 +282,31 @@ CosmicEngine is a data-driven, physics-grounded, AI-assisted cosmic perception e
 - Demo at `examples/barnes_hut_demo.py` benchmarks both solvers from
   N=200 to N=5000 across three `theta` values and prints relative
   errors plus timings.
+
+## Phase 16: Unified runtime
+
+- `cosmic_engine.runtime.CosmicRuntime` orchestrates registry, time,
+  physics, perception, and rendering preparation through a single
+  object. `RuntimeConfig` (validated) selects backends and
+  rendering parameters; `SceneState` is a serializable per-frame
+  summary with `to_dict` / `to_json`.
+- `CosmicRuntime` exposes `add_objects`, `load_sample_data`
+  (best-effort load of Gaia/SDSS/DESI sample CSVs and the JPL
+  placeholder), `select_active_objects(observer_position)` (sorted
+  by id, capped by `max_active_objects`, optionally filtered by
+  `active_radius_m`), `step(dt)` (advances the
+  `SimulationClock` and runs the configured physics backend on
+  registered massive bodies), and `build_scene_state` /
+  `last_scene_state`.
+- `run_headless_frame(runtime, camera, observer, output_path=None)`
+  selects active objects, builds the star photon field, builds a
+  galaxy field batch, optionally applies the perception transform,
+  and optionally writes a PPM. Always returns a `SceneState`; never
+  crashes on empty scenes; non-renderable types (planets, etc.) are
+  noted but skipped.
+- Headless only — no GUI, GPU, Vulkan, Unreal, or real-time
+  windowing yet. The runtime layer adds zero new domain logic; it
+  only schedules calls into the modules built in earlier phases.
+- Demo at `examples/runtime_demo.py` runs three frames (baseline,
+  physics step, perception-enabled) and writes
+  `output_runtime_demo.ppm` plus per-frame `SceneState` JSON.
