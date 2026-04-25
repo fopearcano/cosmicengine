@@ -50,6 +50,9 @@ class AIViewerConfig:
     use_neural_spacetime: bool = False
     spacetime_model_path: str | None = None
 
+    enable_multiscale: bool = False
+    multiscale_blend_width: float = 0.1
+
     def validate(self) -> None:
         """Raise :class:`ValueError` if any field is invalid."""
         if not self.server_host:
@@ -119,3 +122,7 @@ class AIViewerConfig:
             # warning. We don't raise here because the demo path
             # explicitly tests this case.
             pass
+        if self.multiscale_blend_width < 0.0:
+            raise ValueError("multiscale_blend_width must be non-negative")
+        if self.multiscale_blend_width > 1.0:
+            raise ValueError("multiscale_blend_width must be <= 1.0")

@@ -858,3 +858,56 @@ CosmicEngine is a data-driven, physics-grounded, AI-assisted cosmic perception e
   relative error and cosine similarity. After the bundled training
   run: avg `|err/truth| ≈ 1.9%`, median `≈ 1.5%`, cosine similarity
   `≈ 0.9998`.
+
+## Phase 32: Multi-scale universe
+
+- New package `cosmic_engine.multiscale` introduces hierarchical
+  scale zones so a single observer can navigate continuously from
+  microscale to intergalactic distances without swapping engines
+  or reloading data.
+  - `ScaleZone(name, min_scale_m, max_scale_m, representation_type, metadata)`
+    is a validated dataclass. `representation_type` must be one
+    of `("galaxy_field", "star_field", "nbody", "density_field",
+    "neural_field")`.
+  - `ScaleManager(zones)` validates non-overlap, sorts by
+    `min_scale_m`, and exposes `get_zone(distance_m)`,
+    `get_neighbor_above/below(zone)`, and
+    `get_representation(distance_m, runtime)`.
+  - `DEFAULT_ZONES` spans ~27 orders of magnitude:
+    `microscale` (0..1e9 m, density_field) →
+    `solar_system` (1e9..1e16 m, nbody) →
+    `interstellar` (1e16..1e20 m, star_field) →
+    `intergalactic` (1e20..1e27 m, galaxy_field).
+  - `get_representation_for_zone(zone, runtime)` filters the
+    runtime registry to objects matching the zone's representation
+    type and returns `{type, zone_name, objects, object_count, blended}`.
+  - `compute_transition_alpha(distance_m, zone_a, zone_b, blend_width=0.1)`
+    is a linear ramp around the boundary `zone_a.max_scale_m`
+    spanning `blend_width × (zone_a.max - zone_a.min)`.
+  - `blend_representations(rep_a, rep_b, alpha)` takes a
+    `(1 - alpha)` deterministic prefix from `rep_a` and an
+    `alpha` prefix from `rep_b`, marking the result `type =
+    "blended"` with `primary_zone` / `secondary_zone` metadata.
+- `CosmicRuntime` gained `scale_manager`, `multiscale_blend_width`,
+  `enable_multiscale(scale_manager, blend_width=0.1)`, and
+  `get_multiscale_scene(observer_position)`. The latter computes
+  the distance from the observer to the **nearest** active object
+  (most semantically meaningful proxy for "what scale of structure
+  am I in?"), picks the matching zone, and blends with the upper
+  or lower neighbor when the observer is past that zone's
+  midpoint. Fully lazy-imports the multiscale package so existing
+  pipelines pay zero cost.
+- `AIViewerConfig` gained `enable_multiscale: bool = False` and
+  `multiscale_blend_width: float = 0.1` (validated to lie in
+  `[0.0, 1.0]`).
+- Demo at `examples/multiscale_navigation_demo.py` loads bundled
+  Gaia + SDSS + DESI + JPL data, plus 2,000 synthetic galaxies
+  and a fresh solar-system snapshot (~2,039 objects total), then
+  walks an observer through five distance scales (`5e25 → 5e21 →
+  5e17 → 5e10 → 1e3` m). Prints the active zone and renders a
+  PPM frame using the appropriate path for each
+  `representation_type` (gaussian splatter for galaxy_field,
+  photon field for star_field, blank placeholder for nbody /
+  density_field). With the bundled dataset the demo crosses **3
+  zone transitions** and writes 5 frames to
+  `outputs/viewer/output_multiscale_*.ppm`.

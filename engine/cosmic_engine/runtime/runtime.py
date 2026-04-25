@@ -91,6 +91,10 @@ class CosmicRuntime:
         self._tile_cell_size_m: float | None = None
         self._tile_cache: _TileCache | None = None
         self.last_loaded_tiles: list[str] = []
+        # Multi-scale state (Phase 32). All optional; leave ``None`` to
+        # keep the runtime behaving exactly as before.
+        self.scale_manager = None
+        self.multiscale_blend_width: float = 0.1
 
     # --- ingestion --------------------------------------------------------
 
@@ -236,6 +240,92 @@ class CosmicRuntime:
                             candidates.append(obj)
         self.last_loaded_tiles = loaded_tiles
         return candidates
+
+    # --- multi-scale -----------------------------------------------------
+
+    def enable_multiscale(self, scale_manager, blend_width: float = 0.1) -> None:
+        """Attach a :class:`ScaleManager` and configure the blend width."""
+        if blend_width < 0.0:
+            raise ValueError("blend_width must be non-negative")
+        self.scale_manager = scale_manager
+        self.multiscale_blend_width = float(blend_width)
+
+    def get_multiscale_scene(self, observer_position: Vector3) -> dict:
+        """Return the right zone's representation for ``observer_position``.
+
+        The "scale" is the distance from the observer to the nearest
+        active object — i.e. what scale of structure is closest. When
+        that distance lands near the upper or lower edge of the chosen
+        zone, the result is blended with the adjacent zone using
+        :func:`cosmic_engine.multiscale.transition.blend_representations`.
+        """
+        if self.scale_manager is None:
+            raise RuntimeError(
+                "CosmicRuntime.get_multiscale_scene requires "
+                "enable_multiscale() to be called first"
+            )
+        # Lazy import to keep runtime free of multiscale unless used.
+        from cosmic_engine.multiscale.representation import (
+            get_representation_for_zone,
+        )
+        from cosmic_engine.multiscale.transition import (
+            blend_representations,
+            compute_transition_alpha,
+        )
+
+        active = self.select_active_objects(observer_position)
+        if not active:
+            zone = self.scale_manager.zones[0]
+            return get_representation_for_zone(zone, self)
+
+        ox, oy, oz = (
+            observer_position.x,
+            observer_position.y,
+            observer_position.z,
+        )
+        nearest_distance = min(
+            math.sqrt(
+                (o.position_m.x - ox) ** 2
+                + (o.position_m.y - oy) ** 2
+                + (o.position_m.z - oz) ** 2
+            )
+            for o in active
+        )
+
+        zone = self.scale_manager.get_zone(nearest_distance)
+        primary = get_representation_for_zone(zone, self)
+
+        # Try to blend with the neighbor on whichever side the observer
+        # is closer to. This keeps the two-zone blend naturally one-sided.
+        neighbor_above = self.scale_manager.get_neighbor_above(zone)
+        neighbor_below = self.scale_manager.get_neighbor_below(zone)
+        midpoint = zone.min_scale_m + 0.5 * (
+            zone.max_scale_m - zone.min_scale_m
+        )
+        if neighbor_above is not None and nearest_distance > midpoint:
+            alpha = compute_transition_alpha(
+                nearest_distance,
+                zone,
+                neighbor_above,
+                blend_width=self.multiscale_blend_width,
+            )
+            if alpha > 0.0:
+                secondary = get_representation_for_zone(neighbor_above, self)
+                return blend_representations(primary, secondary, alpha)
+        if neighbor_below is not None and nearest_distance < midpoint:
+            # Treat the lower neighbor as "zone_a" so the alpha ramp
+            # measures how far we still are inside ``zone``.
+            alpha = 1.0 - compute_transition_alpha(
+                nearest_distance,
+                neighbor_below,
+                zone,
+                blend_width=self.multiscale_blend_width,
+            )
+            if alpha > 0.0:
+                secondary = get_representation_for_zone(neighbor_below, self)
+                return blend_representations(primary, secondary, alpha)
+
+        return primary
 
     # --- streaming bring-up ----------------------------------------------
 
