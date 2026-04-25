@@ -1,12 +1,19 @@
 # Deployment
 
-CosmicEngine has three deployment paths, in increasing order of
+CosmicEngine has four deployment paths, in increasing order of
 complexity:
 
 1. **Local dev** — `pip install -e .` and run scripts directly.
 2. **Docker compose** — `docker compose -f
-   deploy/lambda/docker-compose.lambda.yml up`.
-3. **Lambda Cloud** — multi-node Ray cluster.
+   deploy/lambda/docker-compose.lambda.yml up` (or the matching
+   `deploy/runpod/docker-compose.runpod.yml`).
+3. **Lambda Cloud** — multi-node Ray cluster on bare GPU VMs.
+4. **RunPod** — multi-pod Ray cluster with network volumes.
+
+The engine layer is identical across providers; only the
+deployment scaffold differs. Lambda's scaffold is
+filesystem-and-`ssh`-centric (matches their VM model); RunPod's is
+container-and-`runpodctl`-centric.
 
 ## Local dev
 
@@ -81,6 +88,44 @@ export COSMIC_HEAD_IP=<HEAD_IP> COSMIC_RAY_ADDRESS=<HEAD_IP>:6379
 ray start --address=<HEAD_IP>:6379
 bash deploy/lambda/scripts/start_worker.sh
 ```
+
+## RunPod
+
+The full operator guide lives in
+[`deploy/runpod/README.md`](../deploy/runpod/README.md). TL;DR:
+
+### Create a runtime pod
+
+```bash
+runpodctl create pod \
+    --name cosmic-runtime \
+    --imageName myorg/cosmic-engine-runtime:runpod \
+    --gpuType "RTX A4000" \
+    --containerDiskInGb 20 --volumeInGb 100 \
+    --volumeMountPath /workspace \
+    --ports "8765/tcp,6379/tcp,8265/http,10001/tcp" \
+    --env COSMIC_ROLE=runtime \
+    --env COSMIC_RAY_ADDRESS=auto \
+    --env COSMIC_RUNTIME_PORT=8765
+```
+
+### Attach a worker pod
+
+```bash
+runpodctl create pod \
+    --name cosmic-worker-ai \
+    --imageName myorg/cosmic-engine-worker:runpod \
+    --gpuType "RTX A4000" \
+    --volumeInGb 100 --volumeMountPath /workspace \
+    --env COSMIC_ROLE=worker \
+    --env COSMIC_RAY_ADDRESS=<HEAD_HOST>:6379 \
+    --env COSMIC_HEAD_IP=<HEAD_HOST>
+```
+
+`<HEAD_HOST>` is the runtime pod's reachable host:port (internal
+RunPod hostname when in the same project, public proxy otherwise —
+note that Ray GCS doesn't run over RunPod's HTTP proxy, so for
+multi-region deployments you'll need a TCP tunnel or Tailscale).
 
 ### Health check
 

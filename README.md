@@ -165,9 +165,25 @@ python -m pytest tests/
 - **[`docs/ROADMAP.md`](docs/ROADMAP.md)** /
   **[`docs/TASKS.md`](docs/TASKS.md)** — planning notes.
 
-## Lambda Cloud deployment (TL;DR)
+## Distributed deployment
 
-Single node:
+CosmicEngine ships two parallel deployment scaffolds — one for
+[Lambda Cloud](deploy/lambda/README.md) (VM-based, manually
+provisioned) and one for [RunPod](deploy/runpod/README.md)
+(container-first, network volumes). Both consume the same
+cloud-agnostic `cosmic_engine.distributed` package; pick the one
+that matches your provider:
+
+| Provider | Files | Best for |
+|---|---|---|
+| **Lambda Cloud** | [`deploy/lambda/`](deploy/lambda/) | Bare GPU VMs, mounted filesystems, `ssh` workflows. |
+| **RunPod** | [`deploy/runpod/`](deploy/runpod/) | Container pods, network volumes, `runpodctl` automation. |
+
+Ray is **optional** in both paths — single-node and CPU-only modes
+work without it. See [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) for
+the full operator reference.
+
+### Lambda Cloud TL;DR
 
 ```bash
 ssh ubuntu@<INSTANCE_IP>
@@ -177,9 +193,17 @@ ray start --head --port=6379 --dashboard-host=0.0.0.0
 bash deploy/lambda/scripts/start_runtime.sh
 ```
 
-Multi-node + viewer + training: see
-[`deploy/lambda/README.md`](deploy/lambda/README.md) for the operator
-guide.
+### RunPod TL;DR
+
+```bash
+runpodctl create pod \
+    --name cosmic-runtime \
+    --imageName myorg/cosmic-engine-runtime:runpod \
+    --gpuType "RTX A4000" \
+    --volumeInGb 100 --volumeMountPath /workspace \
+    --ports "8765/tcp,6379/tcp,8265/http,10001/tcp" \
+    --env COSMIC_ROLE=runtime --env COSMIC_RAY_ADDRESS=auto
+```
 
 ## Contributing
 

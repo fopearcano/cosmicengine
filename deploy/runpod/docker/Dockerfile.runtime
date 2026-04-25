@@ -1,0 +1,61 @@
+# CosmicEngine — runtime / API node for RunPod.
+#
+# RunPod is GPU-first; even the "runtime" role gets a CUDA runtime
+# base so the pod can opt into onnxruntime-gpu without rebuilding.
+# Heavy training deps stay out of this image.
+
+FROM nvidia/cuda:12.4.1-runtime-ubuntu22.04 AS base
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PIP_NO_CACHE_DIR=1 \
+    DEBIAN_FRONTEND=noninteractive \
+    COSMIC_ROLE=runtime \
+    COSMIC_RUNTIME_HOST=0.0.0.0 \
+    COSMIC_RUNTIME_PORT=8765 \
+    COSMIC_DATA_DIR=/workspace/data \
+    COSMIC_MODEL_DIR=/workspace/models \
+    COSMIC_OUTPUT_DIR=/workspace/outputs
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        python3.11 \
+        python3.11-dev \
+        python3-pip \
+        build-essential \
+        libgl1 \
+        libglib2.0-0 \
+        ca-certificates \
+        curl \
+        openssh-server && \
+    rm -rf /var/lib/apt/lists/* && \
+    ln -sf /usr/bin/python3.11 /usr/local/bin/python && \
+    ln -sf /usr/bin/python3.11 /usr/local/bin/python3
+
+WORKDIR /workspace
+
+# Copy only what we need to install the package.
+COPY pyproject.toml /workspace/pyproject.toml
+COPY engine /workspace/engine
+COPY apps /workspace/apps
+
+RUN pip install --upgrade pip && \
+    pip install -e .[distributed]
+
+# Application sources.
+COPY data /workspace/data
+COPY scripts /workspace/scripts
+COPY examples /workspace/examples
+COPY deploy/runpod/scripts /workspace/deploy/runpod/scripts
+
+RUN chmod +x /workspace/deploy/runpod/scripts/*.sh
+
+# 8765 = CosmicRuntime API. Ray ports (6379 GCS, 8265 dashboard,
+# 10001 client) are exposed in case this pod also runs the Ray head.
+EXPOSE 8765 6379 8265 10001
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
+    CMD /workspace/deploy/runpod/scripts/healthcheck.sh || exit 1
+
+CMD ["/workspace/deploy/runpod/scripts/start_runtime.sh"]

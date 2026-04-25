@@ -1,0 +1,98 @@
+# Ray cluster topology for a manually-provisioned CosmicEngine
+# deployment on RunPod.
+#
+# RunPod doesn't ship a managed Ray autoscaler. Provision pods
+# (Web UI or `runpodctl create pod`), pin them to the same network
+# volume, and use this file as the source of truth for which pod
+# is which.
+#
+# After provisioning, on each pod:
+#   1. Confirm /workspace is mounted to the shared network volume.
+#   2. Pull / build the CosmicEngine image from
+#      deploy/runpod/docker/.
+#   3. Set the role-specific env vars (see config/*.env.example).
+#   4. Run the matching start script.
+
+cluster_name: cosmic_engine_runpod
+
+# ---- head pod ------------------------------------------------------
+head_pod:
+  pod_id: "<HEAD_POD_ID>"        # filled in by runpodctl after create
+  template: "cosmic-engine-runtime:runpod"
+  gpu_type: "RTX A6000"          # pick something Ray can see
+  ports:
+    ray: 6379
+    ray_dashboard: 8265
+    ray_client: 10001
+    cosmic_runtime: 8765
+  env:
+    COSMIC_ROLE: runtime
+    COSMIC_RAY_ADDRESS: auto
+  start:
+    - "ray start --head --port=6379 --dashboard-host=0.0.0.0"
+    - "bash deploy/runpod/scripts/start_runtime.sh"
+
+# ---- worker pods --------------------------------------------------
+# Duplicate this block per worker. Keep AI workers (neural photon
+# warp, density reconstruction) and render workers (Gaussian
+# splatting) on separate sub-pools so you can scale them
+# independently.
+worker_pods:
+  - pod_id: "<AI_WORKER_1_POD_ID>"
+    template: "cosmic-engine-worker:runpod"
+    gpu_type: "RTX A4000"
+    role: "ai_worker"
+    env:
+      COSMIC_ROLE: worker
+      COSMIC_RAY_ADDRESS: "<HEAD_HOST>:6379"
+      COSMIC_HEAD_IP: "<HEAD_HOST>"
+    start:
+      - "ray start --address=<HEAD_HOST>:6379"
+      - "bash deploy/runpod/scripts/start_worker.sh"
+
+  - pod_id: "<RENDER_WORKER_1_POD_ID>"
+    template: "cosmic-engine-worker:runpod"
+    gpu_type: "RTX A6000"
+    role: "render_worker"
+    env:
+      COSMIC_ROLE: worker
+      COSMIC_RAY_ADDRESS: "<HEAD_HOST>:6379"
+      COSMIC_HEAD_IP: "<HEAD_HOST>"
+    start:
+      - "ray start --address=<HEAD_HOST>:6379"
+      - "bash deploy/runpod/scripts/start_worker.sh"
+
+# ---- training pod (optional) --------------------------------------
+training_pod:
+  pod_id: "<TRAINING_POD_ID>"
+  template: "cosmic-engine-training:runpod"
+  gpu_type: "A100 80GB"
+  env:
+    COSMIC_ROLE: training
+    COSMIC_RAY_ADDRESS: "<HEAD_HOST>:6379"
+  start:
+    - "ray start --address=<HEAD_HOST>:6379"
+    - "bash deploy/runpod/scripts/start_training.sh"
+
+# ---- viewer pod (optional) ----------------------------------------
+viewer_pod:
+  pod_id: "<VIEWER_POD_ID>"
+  template: "cosmic-engine-viewer:runpod"
+  gpu_type: "CPU pod"
+  env:
+    COSMIC_ROLE: viewer
+    COSMIC_HEAD_IP: "<HEAD_HOST>"
+    COSMIC_RUNTIME_PORT: 8765
+  start:
+    - "bash deploy/runpod/scripts/start_viewer.sh"
+
+# ---- shared storage -----------------------------------------------
+# RunPod network volumes are the simplest way to share data between
+# pods. Create one volume, attach it to every pod at /workspace,
+# then point the COSMIC_*_DIR vars at the standard sub-paths.
+storage:
+  network_volume_id: "<NETWORK_VOLUME_ID>"
+  mount: /workspace
+  data_dir: /workspace/data
+  model_dir: /workspace/models
+  output_dir: /workspace/outputs

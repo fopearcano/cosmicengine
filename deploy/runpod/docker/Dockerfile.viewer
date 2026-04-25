@@ -1,0 +1,39 @@
+# CosmicEngine — AI Viewer pod for RunPod.
+#
+# Slim Python base. Viewer post-processing runs on CPU; no CUDA in
+# this image. Pulls scene_state / reality_view messages from the
+# runtime pod over RunPod's exposed TCP port.
+
+FROM python:3.11-slim AS base
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PIP_NO_CACHE_DIR=1 \
+    COSMIC_ROLE=viewer \
+    COSMIC_HEAD_IP=runtime \
+    COSMIC_RUNTIME_PORT=8765 \
+    COSMIC_OUTPUT_DIR=/workspace/outputs \
+    COSMIC_ENABLE_VIEWER=true
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        libgl1 \
+        libglib2.0-0 \
+        ca-certificates && \
+    rm -rf /var/lib/apt/lists/*
+
+WORKDIR /workspace
+
+COPY pyproject.toml /workspace/pyproject.toml
+COPY engine /workspace/engine
+COPY apps /workspace/apps
+
+RUN pip install --upgrade pip && \
+    pip install -e .
+
+COPY deploy/runpod/scripts /workspace/deploy/runpod/scripts
+
+RUN chmod +x /workspace/deploy/runpod/scripts/*.sh
+
+CMD ["/workspace/deploy/runpod/scripts/start_viewer.sh"]
