@@ -167,24 +167,36 @@ def test_desi_optional_mag_can_be_missing(tmp_path: Path):
 # --- JPL placeholder ---
 
 
-def test_jpl_placeholder_includes_sun_earth_mars():
+def test_jpl_placeholder_includes_sun_and_eight_planets():
     objects = load_jpl_ephemeris_placeholder()
     by_id = {o.id: o for o in objects}
-    assert set(by_id) == {"sun", "earth", "mars"}
+    assert set(by_id) == {
+        "sun",
+        "mercury",
+        "venus",
+        "earth",
+        "mars",
+        "jupiter",
+        "saturn",
+        "uranus",
+        "neptune",
+    }
     assert by_id["sun"].object_type is CosmicObjectType.STAR
-    assert by_id["earth"].object_type is CosmicObjectType.PLANET
-    assert by_id["mars"].object_type is CosmicObjectType.PLANET
+    for planet in ("mercury", "venus", "earth", "mars", "jupiter",
+                   "saturn", "uranus", "neptune"):
+        assert by_id[planet].object_type is CosmicObjectType.PLANET
     for obj in objects:
-        assert obj.truth_level is TruthLevel.EPHEMERIS_REAL
+        assert obj.truth_level is TruthLevel.PHYSICS_SIMULATED
         assert obj.source == "jpl"
+        assert obj.metadata["model"] == "simplified_keplerian"
 
 
 def test_jpl_into_registry_idempotent():
     registry = UniverseRegistry()
     load_jpl_into_registry(registry)
-    assert len(registry.list_objects()) == 3
+    assert len(registry.list_objects()) == 9
     load_jpl_into_registry(registry)  # second call should not duplicate
-    assert len(registry.list_objects()) == 3
+    assert len(registry.list_objects()) == 9
 
 
 # --- unified dispatch ---
@@ -216,8 +228,8 @@ def test_load_catalog_into_registry_handles_all_sources():
     load_catalog_into_registry(str(_DESI), DataSource.DESI, registry)
     load_jpl_into_registry(registry)
     objects = registry.list_objects()
-    # 10 + 10 + 10 + 3 = 33
-    assert len(objects) == 33
+    # 10 + 10 + 10 + 9 = 39 (Gaia + SDSS + DESI + JPL Sun+8 planets)
+    assert len(objects) == 39
 
 
 def test_mixed_catalogs_do_not_collide_ids():
@@ -229,4 +241,4 @@ def test_mixed_catalogs_do_not_collide_ids():
         load_catalog_into_registry(str(_SDSS), DataSource.SDSS, registry)
         load_catalog_into_registry(str(_DESI), DataSource.DESI, registry)
         load_jpl_into_registry(registry)
-    assert len(registry.list_objects()) == 33
+    assert len(registry.list_objects()) == 39

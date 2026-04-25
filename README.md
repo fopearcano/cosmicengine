@@ -201,11 +201,35 @@ CosmicEngine is a data-driven, physics-grounded, AI-assisted cosmic perception e
     `id, ra_deg, …` columns) remains available for backwards
     compatibility.
 - JPL placeholder at `data/jpl_ephemeris.load_jpl_ephemeris_placeholder`
-  / `load_jpl_into_registry` returns a frozen Sun / Earth / Mars
-  snapshot tagged `truth_level=EPHEMERIS_REAL`. Not a real SPICE
-  ingest.
+  / `load_jpl_into_registry` returns a Sun + 8-planet snapshot from
+  the Phase 13 Keplerian model (see below). Not a real SPICE ingest.
 - Real APIs / FITS / SPICE kernels are **not** wired up; ingestion
   is offline CSV today.
 - Sample data: `data/sample_gaia_like.csv`, `data/sample_sdss_like.csv`,
   `data/sample_desi.csv`. Demo at `examples/multi_catalog_demo.py`
   combines all four sources and writes `output_multi_catalog.ppm`.
+
+## Phase 13: Orbital mechanics
+
+- Simplified Keplerian orbital mechanics in
+  `cosmic_engine.physics.orbital`: `OrbitalElements` dataclass,
+  `mean_motion(period)`, `solve_kepler_equation(M, e)` (Newton's
+  method, valid for `0 ≤ e < 1`), and
+  `orbital_position_from_elements(elements, jd)` returning a
+  heliocentric ecliptic Cartesian `Vector3` in meters.
+- Solar-system snapshot at
+  `cosmic_engine.physics.solar_system.create_solar_system_objects(jd)`
+  returns the Sun + eight major planets at the given Julian Date,
+  positioned via the Keplerian solver from approximate J2000.0 mean
+  elements. Source `"approx_solar_system"`,
+  `truth_level=PHYSICS_SIMULATED`,
+  `metadata["model"]="simplified_keplerian"`.
+- The JPL placeholder (`data/jpl_ephemeris.load_jpl_ephemeris_placeholder`)
+  now delegates to this Keplerian model and re-tags the source as
+  `"jpl"`. Positions move consistently with time but are still
+  **not** real JPL ephemerides.
+- No N-body integrator, no perturbations, no relativity, no galaxy
+  dynamics — those are deliberately out of scope.
+- Demo at `examples/solar_system_physics_demo.py` advances a
+  `SimulationClock` by 30 days and prints Earth/Mars position deltas;
+  also writes an `output_solar_system.json` snapshot.

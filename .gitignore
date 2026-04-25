@@ -8,3 +8,4 @@ dist/
 
 # Generated example outputs
 examples/output_*.ppm
+examples/output_*.json
