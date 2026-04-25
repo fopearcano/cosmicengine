@@ -15,6 +15,20 @@ deployment scaffold differs. Lambda's scaffold is
 filesystem-and-`ssh`-centric (matches their VM model); RunPod's is
 container-and-`runpodctl`-centric.
 
+## Provider comparison
+
+| | Lambda Cloud | RunPod |
+|---|---|---|
+| **Compute unit** | Bare GPU VM | GPU container pod |
+| **Provisioning** | Web console / Terraform | Web dashboard / `runpodctl` |
+| **Boot time** | ≈ 1–2 minutes | seconds |
+| **Shared storage** | Mounted filesystem at `/workspace` | Network volume at `/workspace` |
+| **Inter-node networking** | Direct TCP within a VPC | Internal hostnames same-project; TCP tunnel for cross-region |
+| **SSH** | Standard `ubuntu@<IP>` SSH | Per-pod SSH command on dashboard |
+| **Image distribution** | Pull / install on the VM | Build + push to a registry; pod pulls |
+| **Ray autoscaler** | None — provision manually | None — provision manually |
+| **Best for** | Long-running clusters, larger nodes | Short-lived spiky workloads, fast iteration |
+
 ## Local dev
 
 The simplest path. No containers, no cluster.
@@ -92,7 +106,38 @@ bash deploy/lambda/scripts/start_worker.sh
 ## RunPod
 
 The full operator guide lives in
-[`deploy/runpod/README.md`](../deploy/runpod/README.md). TL;DR:
+[`deploy/runpod/README.md`](../deploy/runpod/README.md).
+
+### Build and push images
+
+Run from the repo root. Each command builds one role image; push
+all four to a registry RunPod can pull from.
+
+```bash
+docker build -f deploy/runpod/docker/Dockerfile.runtime  -t myorg/cosmic-engine-runtime:runpod  .
+docker build -f deploy/runpod/docker/Dockerfile.worker   -t myorg/cosmic-engine-worker:runpod   .
+docker build -f deploy/runpod/docker/Dockerfile.viewer   -t myorg/cosmic-engine-viewer:runpod   .
+docker build -f deploy/runpod/docker/Dockerfile.training -t myorg/cosmic-engine-training:runpod .
+docker push myorg/cosmic-engine-runtime:runpod
+docker push myorg/cosmic-engine-worker:runpod
+docker push myorg/cosmic-engine-viewer:runpod
+docker push myorg/cosmic-engine-training:runpod
+```
+
+The runtime / worker / training images are CUDA-based and ≈ 2–3 GB
+each; the viewer is a slim Python image (≈ 300 MB).
+
+### Network volume
+
+Create a RunPod network volume in the same data center as your pods
+(`Storage` → `+ Network Volume`, e.g. 100 GB). Attach it at
+`/workspace` on every pod. The volume holds:
+
+```
+/workspace/data     catalog CSVs, ephemeris snapshots, tile data
+/workspace/models   ONNX / PyTorch checkpoints
+/workspace/outputs  rendered frames + viewer captures
+```
 
 ### Create a runtime pod
 
