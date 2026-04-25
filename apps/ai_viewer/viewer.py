@@ -179,12 +179,22 @@ class AIViewer:
         n_events = message.get("visible_event_count", 0)
         tau_str = f"{tau:.3f}" if isinstance(tau, (int, float)) else "?"
         t_str = f"{coord_t:.3f}" if isinstance(coord_t, (int, float)) else "?"
+        # Prefer the effective (post-rules) warp_factor when present;
+        # fall back to the observer-stored value.
+        effective_warp = meta.get("effective_warp_factor", meta.get("warp_factor"))
+        active_rules = message.get("active_rule_ids") or []
+        reality_meta = message.get("reality_metadata") or {}
+        rules_str = ",".join(active_rules) if active_rules else "-"
+        mode = reality_meta.get("color_mapping") or reality_meta.get(
+            "causality_mode"
+        ) or "scientific"
         print(
             f"observer={observer_id} "
-            f"warp_factor={meta.get('warp_factor')} "
+            f"warp_factor={effective_warp} "
             f"spacetime={meta.get('spacetime_model')} "
             f"rep={message.get('representation_type')} "
-            f"tau={tau_str} t={t_str} events={n_events}"
+            f"tau={tau_str} t={t_str} events={n_events} "
+            f"mode={mode} rules={rules_str}"
         )
         frame_payload = message.get("frame")
         if isinstance(frame_payload, dict) and frame_payload.get("data"):

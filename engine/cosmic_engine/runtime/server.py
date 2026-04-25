@@ -188,6 +188,8 @@ class RuntimeServer:
             "proper_time_tau": payload_dict["proper_time_tau"],
             "coordinate_time_t": payload_dict["coordinate_time_t"],
             "visible_event_count": payload_dict["visible_event_count"],
+            "active_rule_ids": payload_dict["active_rule_ids"],
+            "reality_metadata": payload_dict["reality_metadata"],
         }
         self._send_message(message, observer_id=view.observer_id)
 

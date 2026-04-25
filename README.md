@@ -1053,3 +1053,95 @@ CosmicEngine is a data-driven, physics-grounded, AI-assisted cosmic perception e
   global + per-observer time, get_visible_events filters
   correctly, render_for_observer attaches τ / t /
   visible_event_count).
+
+## Phase 35: Emergent reality layer
+
+- New package `cosmic_engine.reality` adds a deterministic,
+  inspectable rule engine that can modify perception / rendering
+  / interpretation per observer or region without touching the
+  underlying universe state. Every rule declares its
+  **domain** (`PHYSICS / PERCEPTION / RENDERING / CAUSALITY /
+  DATA_INTERPRETATION / SYMBOLIC`), **kind** (`PHYSICAL /
+  PERCEPTUAL / SYMBOLIC / EXPERIMENTAL`), priority, and
+  parameters; effects show up in the produced
+  `RealityView.active_rule_ids` / `reality_metadata`.
+  - `RuleContext(observer_id, observer_position_m,
+    observer_velocity_m_s, warp_factor, coordinate_time_t,
+    proper_time_tau, scale_zone, truth_level_counts,
+    active_rule_ids, metadata)`. `clone()` returns a deep,
+    independent copy; `to_dict()` is JSON-friendly.
+  - `RealityRule` (kw-only dataclass): base class. Default
+    `applies_to_context` returns `self.enabled`; default
+    `apply` clones the context and echoes
+    `self.parameters` under `metadata['rules'][self.id]` so
+    even base-class declarative markers are fully traceable.
+  - Built-in subclasses:
+    - `WarpAmplificationRule` (`PERCEPTION` /
+      `PERCEPTUAL`): multiplies `warp_factor` by
+      `parameters['factor']` (`> 0` enforced; result
+      floored at 1.0).
+    - `RedshiftSymbolicColorRule` (`DATA_INTERPRETATION` /
+      `SYMBOLIC`): sets `metadata['color_mapping'] =
+      'symbolic_redshift'`.
+    - `CausalityRelaxationRule` (`CAUSALITY` /
+      `EXPERIMENTAL`): sets `metadata['causality_mode'] =
+      'relaxed'` (declarative; visibility filter
+      unchanged).
+    - `NeuralRealityRule` (`PERCEPTION` / `PERCEPTUAL`):
+      sets `metadata['use_neural_perception'] = True` and
+      optional `metadata['model_id']`.
+  - `RealityRuleEngine.add_rule / remove_rule / list_rules /
+    evaluate`. Duplicate ids are rejected; `list_rules` sorts by
+    `(-priority, id)` for deterministic order; `evaluate` clones
+    the input context, applies enabled rules in priority order,
+    and appends each applied rule's id to
+    `context.active_rule_ids` (without duplicates).
+- Three presets in `cosmic_engine.reality.presets`:
+  - `create_scientific_reality_preset()` → empty list
+    (default); the absence of active rule ids is the
+    inspectable signal that no reality modification ran.
+  - `create_hypertravel_reality_preset()` → 4 rules
+    (`warp_amplification × 4.0`, `redshift_symbolic_color`,
+    `neural_reality` with `model_id = neural_perception_v1`,
+    `causality_relaxation`).
+  - `create_blackhole_perception_preset()` → 3 rules
+    (`neural_blackhole_perception` with `model_id =
+    neural_spacetime_blackhole`, `lensing_emphasis` with
+    `emphasis = 2.0`, `spectral_shift_blackhole`).
+- `CosmicRuntime.reality_rule_engine` (`None` by default —
+  scientific behavior). When set, `render_for_observer` builds
+  a fresh `RuleContext` from the observer + truth-level counts,
+  runs the engine, uses the resulting `warp_factor` as the
+  *effective* warp for the perception transform, and attaches
+  `rule_context.active_rule_ids` / `rule_context.metadata` to
+  the produced `RealityView`. The observer's stored
+  `warp_factor` is **never** mutated (verified by
+  `test_runtime_render_does_not_mutate_observer_warp` and the
+  demo's tamper check).
+- `RealityView` gained `active_rule_ids: list[str]` and
+  `reality_metadata: dict` (top-level fields, surfaced in
+  `to_dict()` / `summary()`).
+- `RuntimeServer.broadcast_observer_view` extends the wire
+  protocol with `active_rule_ids` and `reality_metadata`.
+- `AIViewer` displays the effective post-rules `warp_factor`
+  plus the active rules and the `mode` derived from
+  `reality_metadata` on every `reality_view` message.
+- Demo at `examples/emergent_reality_demo.py` renders the same
+  observer (5 ly out, β = 0.05) under all three presets and
+  reports active rules + effective warp + reality metadata per
+  preset, then runs a tamper check verifying registry size,
+  ids hash, truth-level counts, and the observer's stored
+  `warp_factor` are unchanged after every render. Mean abs
+  pixel delta vs scientific: hypertravel ≈ `0.085`, blackhole
+  ≈ `0.0` (symbolic-only — no in-pipeline pixel effect yet).
+- 25 new tests in `tests/test_reality_rules.py` cover
+  RuleContext clone independence + dict round-trip, every
+  built-in rule's apply behavior + parameter validation,
+  engine duplicate-id rejection / unknown removal / priority
+  ordering / enabled-only listing / non-mutation, all three
+  presets (id sets / metadata propagation), and runtime
+  integration (no rules → empty active_rule_ids, hypertravel
+  preset attaches expected rules and effective_warp_factor,
+  observer.warp_factor never mutated across multiple renders,
+  to_dict surfaces the new fields, sample-data render leaves
+  registry size + truth counts unchanged).

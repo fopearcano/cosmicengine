@@ -34,6 +34,8 @@ class RealityView:
     proper_time_tau: float = 0.0
     coordinate_time_t: float = 0.0
     visible_event_count: int = 0
+    active_rule_ids: list[str] = field(default_factory=list)
+    reality_metadata: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         """Return a JSON-friendly dict (frame data is reported by shape)."""
@@ -53,6 +55,8 @@ class RealityView:
             "proper_time_tau": float(self.proper_time_tau),
             "coordinate_time_t": float(self.coordinate_time_t),
             "visible_event_count": int(self.visible_event_count),
+            "active_rule_ids": list(self.active_rule_ids),
+            "reality_metadata": dict(self.reality_metadata),
         }
 
     def summary(self) -> str:
@@ -62,9 +66,10 @@ class RealityView:
         model = meta.get("spacetime_model", "none")
         n_obj = meta.get("object_count", "?")
         warp_str = f"warp={warp}" if warp is not None else "warp=?"
+        rules_str = ",".join(self.active_rule_ids) or "-"
         return (
             f"observer={self.observer_id} rep={self.representation_type} "
             f"objects={n_obj} {warp_str} spacetime={model} "
             f"τ={self.proper_time_tau:.3f} t={self.coordinate_time_t:.3f} "
-            f"events={self.visible_event_count}"
+            f"events={self.visible_event_count} rules={rules_str}"
         )

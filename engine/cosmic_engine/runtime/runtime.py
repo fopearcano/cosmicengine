@@ -105,6 +105,9 @@ class CosmicRuntime:
         # light cone in get_visible_events().
         self.event_store: EventStore = EventStore()
         self.coordinate_time_t: float = 0.0
+        # Reality rule engine (Phase 35). ``None`` means "scientific
+        # default" — no rules applied, behavior identical to before.
+        self.reality_rule_engine = None
 
     # --- ingestion --------------------------------------------------------
 
@@ -383,6 +386,13 @@ class CosmicRuntime:
             rep_type = "flat"
             zone_name = None
 
+        # Phase 35: evaluate the reality rule engine into a fresh
+        # context. The result is used for this render only — the
+        # observer's stored warp_factor / state is never mutated.
+        rule_context = self._build_rule_context(observer, zone_name)
+        rule_context = self._evaluate_reality_rules(rule_context)
+        effective_warp = float(rule_context.warp_factor)
+
         notes: list[str] = []
         spacetime_label = "none"
         if observer.spacetime_model is not None:
@@ -422,7 +432,7 @@ class CosmicRuntime:
                 velocity_m_s=observer.velocity_m_s,
                 forward=observer.forward,
                 up=observer.up,
-                warp_factor=observer.warp_factor,
+                warp_factor=effective_warp,
             )
             try:
                 samples = transform_photon_field(
@@ -452,6 +462,7 @@ class CosmicRuntime:
             frame_data=frame_data,
             metadata={
                 "warp_factor": observer.warp_factor,
+                "effective_warp_factor": effective_warp,
                 "beta": observer.beta(),
                 "spacetime_model": spacetime_label,
                 "ai_warp_model": ai_warp_label,
@@ -465,6 +476,8 @@ class CosmicRuntime:
             proper_time_tau=float(observer.proper_time_tau),
             coordinate_time_t=float(observer.coordinate_time_t),
             visible_event_count=len(visible_events),
+            active_rule_ids=list(rule_context.active_rule_ids),
+            reality_metadata=dict(rule_context.metadata),
         )
 
     def step_all_observers(
@@ -495,6 +508,40 @@ class CosmicRuntime:
                 )
             views.append(self.render_for_observer(observer.id, cam))
         return views
+
+    def _build_rule_context(self, observer, scale_zone_name: str | None):
+        """Construct a fresh :class:`RuleContext` for this render."""
+        from cosmic_engine.reality.rule_context import RuleContext
+
+        truth_counts: dict[str, int] = {}
+        for obj in self.registry.list_objects():
+            tl = obj.truth_level.value
+            truth_counts[tl] = truth_counts.get(tl, 0) + 1
+        return RuleContext(
+            observer_id=observer.id,
+            observer_position_m=observer.position_m,
+            observer_velocity_m_s=observer.velocity_m_s,
+            warp_factor=float(observer.warp_factor),
+            coordinate_time_t=float(observer.coordinate_time_t),
+            proper_time_tau=float(observer.proper_time_tau),
+            scale_zone=scale_zone_name,
+            truth_level_counts=truth_counts,
+        )
+
+    def _evaluate_reality_rules(self, context):
+        """Run ``self.reality_rule_engine`` if attached; passthrough otherwise."""
+        if self.reality_rule_engine is None:
+            return context.clone()
+        try:
+            return self.reality_rule_engine.evaluate(context)
+        except Exception as e:  # pragma: no cover - defensive
+            # Never let a bad rule break a render. Stash the error
+            # marker in metadata so it's visible from the RealityView.
+            fallback = context.clone()
+            fallback.metadata["reality_rule_error"] = (
+                f"{type(e).__name__}: {e}"
+            )
+            return fallback
 
     @staticmethod
     def _load_ppm_pixels(path) -> "np.ndarray | None":
