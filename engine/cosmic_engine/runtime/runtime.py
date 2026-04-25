@@ -11,6 +11,7 @@ from cosmic_engine.core.time import SimulationClock
 from cosmic_engine.core.universe_object import UniverseObject
 from cosmic_engine.core.vector import Vector3
 from cosmic_engine.observer.observer_manager import ObserverManager
+from cosmic_engine.provenance.truth_tracker import TruthTracker
 from cosmic_engine.runtime.config import RuntimeConfig
 from cosmic_engine.runtime.scene_state import SceneState
 from cosmic_engine.time.event_store import EventStore
@@ -108,14 +109,29 @@ class CosmicRuntime:
         # Reality rule engine (Phase 35). ``None`` means "scientific
         # default" — no rules applied, behavior identical to before.
         self.reality_rule_engine = None
+        # Provenance tracker (Phase 36). Lightweight in-memory dict;
+        # registers every UniverseObject as it's added and accumulates
+        # per-pipeline transformation labels.
+        self.truth_tracker: TruthTracker = TruthTracker()
 
     # --- ingestion --------------------------------------------------------
 
     def add_objects(self, objects: list[UniverseObject]) -> None:
-        """Add objects to the registry, skipping IDs that already exist."""
+        """Add objects to the registry, skipping IDs that already exist.
+
+        Also registers each new object with :attr:`truth_tracker` so
+        downstream pipeline steps can append transformation labels to
+        its provenance record.
+        """
         for obj in objects:
             if self.registry.get_object(obj.id) is None:
                 self.registry.add_object(obj)
+                self.truth_tracker.register_entity(
+                    entity_id=obj.id,
+                    source=obj.source if obj.source is not None else "unknown",
+                    truth_level=obj.truth_level.value,
+                    timestamp=self.coordinate_time_t,
+                )
 
     def load_sample_data(self) -> None:
         """Best-effort load of the bundled sample CSVs and JPL placeholder."""
@@ -426,6 +442,7 @@ class CosmicRuntime:
         # Apply this observer's perception (relativistic aberration +
         # warp_factor + optional AI warp) so identical scene data
         # produces a different reality per observer.
+        pipeline_transformations: list[str] = []
         if samples:
             obs_state = ObserverState(
                 position_m=observer.position_m,
@@ -440,8 +457,32 @@ class CosmicRuntime:
                     obs_state,
                     ai_model=observer.ai_warp_model,
                 )
+                pipeline_transformations.append("perception_warp")
+                if observer.ai_warp_model is not None and ai_warp_label != "fallback":
+                    pipeline_transformations.append("ai_warp")
+                # Stamp every visible sample's record with the
+                # transformations that touched it.
+                for sample in samples:
+                    self.truth_tracker.add_transformation(
+                        sample.object_id, "perception_warp"
+                    )
+                    if (
+                        observer.ai_warp_model is not None
+                        and ai_warp_label != "fallback"
+                    ):
+                        self.truth_tracker.add_transformation(
+                            sample.object_id, "ai_warp"
+                        )
             except Exception as e:  # pragma: no cover - defensive
                 notes.append(f"perception error: {type(e).__name__}: {e}")
+        # Reality-rule application is also a transformation. We
+        # surface it as ``reality_rule:<id>`` so audit consumers can
+        # grep one prefix.
+        for rule_id in rule_context.active_rule_ids:
+            label = f"reality_rule:{rule_id}"
+            pipeline_transformations.append(label)
+            for sample in samples:
+                self.truth_tracker.add_transformation(sample.object_id, label)
         if samples and out_path:
             try:
                 render_photon_field_to_ppm(samples, camera, str(out_path))
@@ -455,7 +496,11 @@ class CosmicRuntime:
 
         visible_events = self.get_visible_events(observer)
 
-        return RealityView(
+        provenance_summary = self._build_provenance_summary(
+            rep_objects, samples, pipeline_transformations
+        )
+
+        view = RealityView(
             observer_id=observer.id,
             scene_state=scene_state,
             representation_type=rep_type,
@@ -472,13 +517,81 @@ class CosmicRuntime:
                 "zone_name": zone_name,
                 "output_ppm_path": str(out_path) if out_path else None,
                 "visible_event_ids": [e.id for e in visible_events],
+                "provenance_summary": provenance_summary,
             },
             proper_time_tau=float(observer.proper_time_tau),
             coordinate_time_t=float(observer.coordinate_time_t),
             visible_event_count=len(visible_events),
             active_rule_ids=list(rule_context.active_rule_ids),
             reality_metadata=dict(rule_context.metadata),
+            provenance_summary=provenance_summary,
         )
+        # Run the audit *after* the view is fully assembled so the
+        # warning detector sees the final reality_metadata + scene_state.
+        from cosmic_engine.provenance.audit import detect_truth_mixing
+
+        view.audit_warnings = detect_truth_mixing(view)
+        return view
+
+    def _build_provenance_summary(
+        self,
+        rep_objects: list,
+        samples: list,
+        pipeline_transformations: list[str],
+    ) -> dict:
+        """Aggregate the truth_tracker state for the rendered entities.
+
+        The summary includes:
+          - ``transformations``: deduped pipeline steps in the order
+            they were applied.
+          - ``source_counts`` / ``truth_level_counts``: aggregated over
+            the rep_objects (or sample object ids if rep_objects is
+            empty — the photon path may render samples that aren't in
+            the registry list, e.g. multiscale-blended sets).
+          - ``tracked_entities``: how many of those entities have a
+            provenance record.
+          - ``observed_entities``: how many of those records carry a
+            trusted (observed/measured) truth level.
+        """
+        seen = set()
+        ordered_transformations: list[str] = []
+        for label in pipeline_transformations:
+            if label not in seen:
+                ordered_transformations.append(label)
+                seen.add(label)
+
+        ids: list[str] = []
+        if rep_objects:
+            ids = [o.id for o in rep_objects]
+        else:
+            ids = [s.object_id for s in samples]
+
+        source_counts: dict[str, int] = {}
+        truth_level_counts: dict[str, int] = {}
+        tracked = 0
+        observed = 0
+        for entity_id in ids:
+            record = self.truth_tracker.get_record(entity_id)
+            if record is None:
+                continue
+            tracked += 1
+            source_counts[record.source] = (
+                source_counts.get(record.source, 0) + 1
+            )
+            truth_level_counts[record.truth_level] = (
+                truth_level_counts.get(record.truth_level, 0) + 1
+            )
+            if record.truth_level in ("observed", "measured"):
+                observed += 1
+
+        return {
+            "transformations": ordered_transformations,
+            "source_counts": source_counts,
+            "truth_level_counts": truth_level_counts,
+            "tracked_entities": tracked,
+            "observed_entities": observed,
+            "total_records": len(self.truth_tracker),
+        }
 
     def step_all_observers(
         self,
@@ -724,6 +837,10 @@ class CosmicRuntime:
             apply_nbody_state_to_objects(massive, sim.get_state())
         except Exception as e:  # pragma: no cover - defensive
             return [f"physics: failed ({e})"]
+        for obj in massive:
+            self.truth_tracker.add_transformation(
+                obj.id, f"physics_{backend}"
+            )
         return [f"physics: {backend} stepped {len(massive)} bodies"]
 
     # --- introspection ----------------------------------------------------

@@ -1145,3 +1145,87 @@ CosmicEngine is a data-driven, physics-grounded, AI-assisted cosmic perception e
   observer.warp_factor never mutated across multiple renders,
   to_dict surfaces the new fields, sample-data render leaves
   registry size + truth counts unchanged).
+
+## Phase 36: Provenance and truth integrity
+
+- New package `cosmic_engine.provenance` adds a lightweight,
+  in-memory audit layer that tracks **how** every rendered output
+  was produced. No external dependencies, no heavyweight logging
+  — every storage primitive is a plain dict.
+  - `ProvenanceRecord(entity_id, source, truth_level,
+    transformations, timestamp, observer_id)`. Methods:
+    `add_transformation(name)` (rejects empty), `to_dict()`.
+  - `TruthTracker.register_entity(entity_id, source, truth_level,
+    timestamp=0.0, observer_id=None)` is **idempotent**:
+    re-registering an existing id never overwrites its
+    transformation history (so callers can fire register-on-load
+    safely). `add_transformation(entity_id, transformation)`
+    returns a bool so hot paths can fire-and-forget without
+    try/except. `add_transformation_to_all(name)` stamps every
+    record at once for whole-pipeline steps. `list_records()`
+    is sorted by `entity_id` for determinism.
+  - `audit_reality_view(view) -> dict` returns
+    `{observer_id, truth_distribution, transformations,
+    active_rules, warnings}`. `transformations` deduplicates
+    pipeline labels (e.g. `"perception_warp"`, `"ai_warp"`,
+    `"physics_<backend>"`) followed by reality rules emitted as
+    `"reality_rule:<id>"` so the whole audit grep is one prefix.
+  - `detect_truth_mixing(view) -> list[str]` flags three
+    deterministic conditions: (1) AI step touched observed-class
+    data without a `use_neural_perception` marker;
+    (2) symbolic rule active without a `color_mapping` marker;
+    (3) `causality_mode == "relaxed"` while
+    `visible_event_count > 0`.
+- `CosmicRuntime.truth_tracker` (always present, empty by
+  default). `add_objects` registers each new
+  `UniverseObject`'s `id` / `source` / `truth_level.value`.
+  Physics-step labels every massive object with
+  `"physics_<backend>"`. `render_for_observer` records
+  `"perception_warp"` on every rendered photon's source object,
+  `"ai_warp"` when an `AIWarpModel` is attached and didn't
+  fall back, and `"reality_rule:<id>"` for each active rule.
+- `RealityView` gained two top-level fields:
+  `provenance_summary: dict` (transformations, source_counts,
+  truth_level_counts, tracked_entities, observed_entities,
+  total_records) and `audit_warnings: list[str]`.
+  `runtime.render_for_observer` runs `detect_truth_mixing`
+  *after* the view is fully assembled and stashes the result
+  on the view itself. `to_dict()` and `summary()` surface
+  both fields.
+- `RuntimeServer.broadcast_observer_view` extends the
+  `reality_view` wire payload with `provenance_summary` and
+  `audit_warnings`.
+- `AIViewer` prints the audit-warning count on every
+  reality_view message; `AIViewerConfig.verbose_audit = True`
+  switches on per-message dumps of truth_level_counts +
+  transformations + each warning text.
+- Demo at `examples/provenance_audit_demo.py` loads the
+  bundled mixed dataset (`gaia` + `sdss` + `desi` + `jpl` =
+  `catalog_imported` / `ephemeris_real`, `physics_simulated`,
+  plus 200 `procedural_approximation` synthetic galaxies) and
+  attaches an identity AI warp model so every render exercises
+  the AI-mixing path. Renders the same observer under all 3
+  reality presets and prints the audit:
+  - **scientific**: 1 audit warning ("observed data passed
+    through an AI transformation without use_neural_perception
+    declared") — exactly what the audit is for.
+  - **hypertravel** / **blackhole**: 0 warnings, because the
+    presets explicitly set `use_neural_perception = True` in
+    `reality_metadata`. The pipeline transformation list grows
+    to include each `reality_rule:<id>`.
+  - 239 provenance records total; ~11 records carry pipeline
+    transformations (only entities the renderer actually
+    touched).
+- 23 new tests in `tests/test_provenance.py` cover record
+  to_dict / append-order / empty-transformation rejection,
+  tracker register/get/idempotence/empty-id rejection/list
+  ordering/per-id and global transformation propagation,
+  audit return-keys / pipeline+rules merging, every
+  `detect_truth_mixing` condition (AI-on-observed, symbolic
+  without marker, relaxed-causality with events, clean view),
+  and runtime integration (tracker present by default,
+  add_objects registers, render attaches a populated
+  provenance_summary, AI warp records `"ai_warp"` and
+  triggers the warning, reality rules record their labels,
+  empty-registry render doesn't crash, to_dict surfaces
+  both new fields).

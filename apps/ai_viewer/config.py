@@ -54,6 +54,7 @@ class AIViewerConfig:
     multiscale_blend_width: float = 0.1
 
     observer_id: str | None = None
+    verbose_audit: bool = False
 
     def validate(self) -> None:
         """Raise :class:`ValueError` if any field is invalid."""

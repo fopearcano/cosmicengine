@@ -190,6 +190,8 @@ class RuntimeServer:
             "visible_event_count": payload_dict["visible_event_count"],
             "active_rule_ids": payload_dict["active_rule_ids"],
             "reality_metadata": payload_dict["reality_metadata"],
+            "provenance_summary": payload_dict["provenance_summary"],
+            "audit_warnings": payload_dict["audit_warnings"],
         }
         self._send_message(message, observer_id=view.observer_id)
 

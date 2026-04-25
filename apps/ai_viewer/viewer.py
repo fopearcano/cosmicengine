@@ -188,14 +188,24 @@ class AIViewer:
         mode = reality_meta.get("color_mapping") or reality_meta.get(
             "causality_mode"
         ) or "scientific"
+        provenance = message.get("provenance_summary") or {}
+        warnings = message.get("audit_warnings") or []
         print(
             f"observer={observer_id} "
             f"warp_factor={effective_warp} "
             f"spacetime={meta.get('spacetime_model')} "
             f"rep={message.get('representation_type')} "
             f"tau={tau_str} t={t_str} events={n_events} "
-            f"mode={mode} rules={rules_str}"
+            f"mode={mode} rules={rules_str} warnings={len(warnings)}"
         )
+        if self.config.verbose_audit:
+            tcounts = provenance.get("truth_level_counts") or {}
+            tx = provenance.get("transformations") or []
+            print(
+                f"  truth_levels={tcounts} transformations={tx}"
+            )
+            for w in warnings:
+                print(f"  audit_warning: {w}")
         frame_payload = message.get("frame")
         if isinstance(frame_payload, dict) and frame_payload.get("data"):
             self._handle_frame({"type": "frame", "data": frame_payload["data"]})
