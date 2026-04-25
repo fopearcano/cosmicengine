@@ -1,0 +1,57 @@
+# CosmicEngine — AI / render worker node.
+#
+# Built on a CUDA *runtime* base so PyTorch + onnxruntime can use the
+# GPU when one is exposed via NVIDIA Container Toolkit. CUDA is
+# optional — the worker still starts on CPU-only hosts; the engine's
+# health probe just reports cuda.available=False.
+
+FROM nvidia/cuda:12.4.1-runtime-ubuntu22.04 AS base
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PIP_NO_CACHE_DIR=1 \
+    DEBIAN_FRONTEND=noninteractive \
+    COSMIC_ROLE=worker \
+    COSMIC_DATA_DIR=/workspace/data \
+    COSMIC_MODEL_DIR=/workspace/models \
+    COSMIC_OUTPUT_DIR=/workspace/outputs \
+    COSMIC_HEAD_PORT=6379
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        python3.11 \
+        python3.11-dev \
+        python3-pip \
+        build-essential \
+        libgl1 \
+        libglib2.0-0 \
+        ca-certificates \
+        curl && \
+    rm -rf /var/lib/apt/lists/* && \
+    ln -sf /usr/bin/python3.11 /usr/local/bin/python && \
+    ln -sf /usr/bin/python3.11 /usr/local/bin/python3
+
+WORKDIR /workspace
+
+COPY pyproject.toml /workspace/pyproject.toml
+COPY engine /workspace/engine
+COPY apps /workspace/apps
+
+RUN pip install --upgrade pip && \
+    pip install -e .[distributed]
+
+COPY data /workspace/data
+COPY scripts /workspace/scripts
+COPY examples /workspace/examples
+COPY deploy/lambda/scripts /workspace/deploy/lambda/scripts
+
+RUN chmod +x /workspace/deploy/lambda/scripts/*.sh
+
+# Ray client / dashboard ports the worker may need to expose.
+EXPOSE 6379 8265 10001
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
+    CMD /workspace/deploy/lambda/scripts/healthcheck.sh || exit 1
+
+CMD ["/workspace/deploy/lambda/scripts/start_worker.sh"]

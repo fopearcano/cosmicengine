@@ -1,0 +1,53 @@
+# CosmicEngine — neural-spacetime training node.
+#
+# Built on a CUDA *devel* base so the PyTorch wheel can pick up the
+# CUDA toolkit headers if it needs to compile extensions. Training
+# is opt-in: this image is large; runtime / viewer / worker images
+# stay slim by NOT depending on it.
+
+FROM nvidia/cuda:12.4.1-devel-ubuntu22.04 AS base
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PIP_NO_CACHE_DIR=1 \
+    DEBIAN_FRONTEND=noninteractive \
+    COSMIC_ROLE=training \
+    COSMIC_ENABLE_TRAINING=true \
+    COSMIC_DATA_DIR=/workspace/data \
+    COSMIC_MODEL_DIR=/workspace/models \
+    COSMIC_OUTPUT_DIR=/workspace/outputs
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        python3.11 \
+        python3.11-dev \
+        python3-pip \
+        build-essential \
+        git \
+        libgl1 \
+        libglib2.0-0 \
+        ca-certificates \
+        curl && \
+    rm -rf /var/lib/apt/lists/* && \
+    ln -sf /usr/bin/python3.11 /usr/local/bin/python && \
+    ln -sf /usr/bin/python3.11 /usr/local/bin/python3
+
+WORKDIR /workspace
+
+COPY pyproject.toml /workspace/pyproject.toml
+COPY engine /workspace/engine
+COPY apps /workspace/apps
+
+RUN pip install --upgrade pip && \
+    pip install -e .[distributed] && \
+    pip install onnxscript
+
+COPY data /workspace/data
+COPY scripts /workspace/scripts
+COPY examples /workspace/examples
+COPY deploy/lambda/scripts /workspace/deploy/lambda/scripts
+
+RUN chmod +x /workspace/deploy/lambda/scripts/*.sh
+
+CMD ["/workspace/deploy/lambda/scripts/start_training.sh"]

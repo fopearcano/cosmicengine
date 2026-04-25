@@ -1411,3 +1411,112 @@ CosmicEngine is a data-driven, physics-grounded, AI-assisted cosmic perception e
   exposure, all three presets validate + carry their
   expected rule sets, and isolation: the synth path never
   introduces real-data sources.
+
+## Lambda Cloud deployment
+
+CosmicEngine ships with a complete Lambda Cloud deployment scaffold
+under [`deploy/lambda/`](deploy/lambda). The local single-node
+workflow is unchanged — these files only add new ways to run.
+
+- **Per-role Dockerfiles**: `Dockerfile.runtime` (CosmicRuntime
+  API server, no CUDA), `Dockerfile.worker` (CUDA runtime base
+  for ONNX inference + Gaussian splatting), `Dockerfile.viewer`
+  (slim CPU client), `Dockerfile.training` (CUDA devel base,
+  PyTorch + onnxscript). Each image stays separate so a runtime
+  pod doesn't pay the cost of training dependencies.
+- **Start scripts** in `deploy/lambda/scripts/`: each role has a
+  `start_<role>.sh` that reads the documented `COSMIC_*`
+  environment variables and dispatches into
+  `python -m cosmic_engine.distributed.entrypoints <role>`. A
+  `healthcheck.sh` prints a JSON node-health report (CUDA
+  availability, Ray status, data-directory writability).
+- **Env / cluster config** in `deploy/lambda/config/`:
+  `runtime.env.example`, `worker.env.example`,
+  `lambda_cluster.env.example`, and a documented
+  `ray_cluster.yaml.example` topology template (Lambda Cloud has
+  no managed Ray autoscaler — provision instances manually and
+  use the YAML as your source of truth).
+- **Local emulation**: `deploy/lambda/docker-compose.lambda.yml`
+  brings up `ray-head`, `worker-ai`, `worker-render`, and a
+  viewer locally. GPU support is opt-in (uncomment the
+  `deploy.resources.reservations.devices` block on a service
+  when the NVIDIA Container Toolkit is installed). The stack
+  works without GPUs.
+- **Optional dependency group**: a new `distributed` extra in
+  `pyproject.toml` pulls `ray[default]>=2.9`. Install with
+  `pip install -e .[distributed]`. **Ray is not mandatory** —
+  importing `cosmic_engine.distributed` works without it, every
+  Ray-dependent helper is gated behind `is_ray_available()`,
+  and the test suite never spins up a cluster.
+- **`cosmic_engine.distributed` package**:
+  - `DistributedConfig` reads `COSMIC_ROLE`,
+    `COSMIC_RAY_ADDRESS`, `COSMIC_HEAD_IP`,
+    `COSMIC_HEAD_PORT`, `COSMIC_RUNTIME_HOST`,
+    `COSMIC_RUNTIME_PORT`, `COSMIC_DATA_DIR`,
+    `COSMIC_MODEL_DIR`, `COSMIC_OUTPUT_DIR`,
+    `COSMIC_ENABLE_GPU`, `COSMIC_ENABLE_VIEWER`,
+    `COSMIC_ENABLE_TRAINING`, `COSMIC_LAMBDA_INSTANCE_TYPE`,
+    `COSMIC_NODE_NAME`, plus `COSMIC_NUM_GPUS / NUM_CPUS /
+    OBJECT_STORE_GB` for fine-grained Ray init. Allowed roles:
+    `head / worker / runtime / viewer / training`. Validation
+    rejects unknown roles, out-of-range ports, and negative
+    resources.
+  - `init_ray(config)` connects to (or starts) Ray; raises a
+    clear `RuntimeError` when Ray isn't installed.
+    `shutdown_ray()` is idempotent.
+  - `tasks.py` defines five Ray remote tasks
+    (`process_catalog_chunk`, `run_physics_step`,
+    `run_ai_warp_batch`, `run_density_reconstruction`,
+    `render_gaussian_frame`). Every task imports CosmicEngine
+    submodules lazily, returns a JSON-serializable dict, and
+    never raises — failures land in a uniform
+    `{"ok": False, "error": "..."}` shape. The `as_remote(fn)`
+    helper transparently wraps with `ray.remote` only when Ray
+    is available.
+  - `health.py` aggregates `check_cuda_available`,
+    `check_ray_status`, and `check_data_dirs` into a
+    `health_report(config)` dict suitable for HEALTHCHECK.
+  - `entrypoints.py` exposes `run_head_node`,
+    `run_worker_node`, `run_runtime_service`,
+    `run_viewer_service`, `run_training_service` plus a
+    `python -m cosmic_engine.distributed.entrypoints <role>`
+    CLI dispatcher that also handles the special `health` role.
+
+### Single-node Lambda deployment
+
+```bash
+ssh ubuntu@<INSTANCE_IP>
+git clone https://github.com/<your-org>/cosmicengine.git /workspace/cosmicengine
+cd /workspace/cosmicengine
+pip install -e .[distributed]
+ray start --head --port=6379 --dashboard-host=0.0.0.0
+set -a; . deploy/lambda/config/runtime.env.example; set +a
+bash deploy/lambda/scripts/start_runtime.sh
+```
+
+### Multi-node Lambda deployment
+
+On the head:
+```bash
+ray start --head --port=6379 --dashboard-host=0.0.0.0 --dashboard-port=8265
+bash deploy/lambda/scripts/start_runtime.sh
+```
+
+On each worker:
+```bash
+export COSMIC_HEAD_IP=<HEAD_IP>
+export COSMIC_RAY_ADDRESS=<HEAD_IP>:6379
+ray start --address=<HEAD_IP>:6379
+bash deploy/lambda/scripts/start_worker.sh
+```
+
+See [`deploy/lambda/README.md`](deploy/lambda/README.md) for the
+complete operator guide (instance recommendations, persistent
+storage, ports, viewer setup, training nodes, troubleshooting).
+
+35 new tests in `tests/test_lambda_deployment_config.py` verify
+config defaults / env parsing / role validation, every task's
+fallback contract (no Ray, no GPU, malformed payloads),
+entrypoint imports + CLI dispatch, the `health_report` shape, and
+the presence of every dockerfile / start script / env example
+file. Full suite: 880.

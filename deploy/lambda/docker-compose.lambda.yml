@@ -1,0 +1,157 @@
+# Local emulation of a CosmicEngine Lambda deployment.
+#
+# Spins up: ray-head, two workers (ai + render), runtime, viewer.
+# All services share the same volume layout (/workspace/{data,
+# models,outputs}) that the Lambda Dockerfiles assume.
+#
+# GPU support: uncomment the deploy.resources.reservations.devices
+# block below on services that need a GPU. Requires the NVIDIA
+# Container Toolkit on the host. Without it the stack still works,
+# just on CPU only.
+
+version: "3.9"
+
+services:
+  # ----------------------------------------------------------------
+  # Ray head + CosmicRuntime API
+  # ----------------------------------------------------------------
+  ray-head:
+    build:
+      context: ../..
+      dockerfile: deploy/lambda/docker/Dockerfile.runtime
+    image: cosmic-engine/runtime:lambda
+    hostname: ray-head
+    container_name: cosmic-ray-head
+    environment:
+      COSMIC_ROLE: runtime
+      # Bind to all interfaces inside the container so workers /
+      # viewer can reach us by service name.
+      COSMIC_RUNTIME_HOST: "0.0.0.0"
+      COSMIC_RUNTIME_PORT: "8765"
+      COSMIC_HEAD_IP: "0.0.0.0"
+      COSMIC_HEAD_PORT: "6379"
+      COSMIC_DATA_DIR: /workspace/data
+      COSMIC_MODEL_DIR: /workspace/models
+      COSMIC_OUTPUT_DIR: /workspace/outputs
+      COSMIC_NODE_NAME: ray-head
+    ports:
+      - "8765:8765"   # CosmicRuntime API
+      - "6379:6379"   # Ray GCS
+      - "8265:8265"   # Ray dashboard
+      - "10001:10001" # Ray client
+    volumes:
+      - ./data:/workspace/data
+      - ./models:/workspace/models
+      - ./outputs:/workspace/outputs
+
+  # ----------------------------------------------------------------
+  # AI worker (neural photon warp, density reconstruction)
+  # ----------------------------------------------------------------
+  worker-ai:
+    build:
+      context: ../..
+      dockerfile: deploy/lambda/docker/Dockerfile.worker
+    image: cosmic-engine/worker:lambda
+    container_name: cosmic-worker-ai
+    depends_on:
+      - ray-head
+    environment:
+      COSMIC_ROLE: worker
+      COSMIC_HEAD_IP: ray-head
+      COSMIC_HEAD_PORT: "6379"
+      COSMIC_RAY_ADDRESS: "ray-head:6379"
+      COSMIC_DATA_DIR: /workspace/data
+      COSMIC_MODEL_DIR: /workspace/models
+      COSMIC_OUTPUT_DIR: /workspace/outputs
+      COSMIC_NODE_NAME: worker-ai
+      COSMIC_ENABLE_GPU: "false"
+    volumes:
+      - ./data:/workspace/data
+      - ./models:/workspace/models
+      - ./outputs:/workspace/outputs
+    # Uncomment to expose a GPU (requires NVIDIA Container Toolkit):
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
+
+  # ----------------------------------------------------------------
+  # Render worker (Gaussian splatting / GPU rendering)
+  # ----------------------------------------------------------------
+  worker-render:
+    build:
+      context: ../..
+      dockerfile: deploy/lambda/docker/Dockerfile.worker
+    image: cosmic-engine/worker:lambda
+    container_name: cosmic-worker-render
+    depends_on:
+      - ray-head
+    environment:
+      COSMIC_ROLE: worker
+      COSMIC_HEAD_IP: ray-head
+      COSMIC_HEAD_PORT: "6379"
+      COSMIC_RAY_ADDRESS: "ray-head:6379"
+      COSMIC_DATA_DIR: /workspace/data
+      COSMIC_MODEL_DIR: /workspace/models
+      COSMIC_OUTPUT_DIR: /workspace/outputs
+      COSMIC_NODE_NAME: worker-render
+      COSMIC_ENABLE_GPU: "false"
+    volumes:
+      - ./data:/workspace/data
+      - ./models:/workspace/models
+      - ./outputs:/workspace/outputs
+    # See worker-ai above for the optional GPU reservation block.
+
+  # ----------------------------------------------------------------
+  # Runtime API (separate pod from ray-head if you want the head
+  # to stay focused on Ray scheduling). For single-node compose this
+  # is redundant with ray-head, kept here as a template.
+  # ----------------------------------------------------------------
+  runtime:
+    build:
+      context: ../..
+      dockerfile: deploy/lambda/docker/Dockerfile.runtime
+    image: cosmic-engine/runtime:lambda
+    container_name: cosmic-runtime
+    depends_on:
+      - ray-head
+    profiles: ["dedicated-runtime"]   # opt-in via `--profile`
+    environment:
+      COSMIC_ROLE: runtime
+      COSMIC_RAY_ADDRESS: "ray-head:6379"
+      COSMIC_HEAD_IP: ray-head
+      COSMIC_HEAD_PORT: "6379"
+      COSMIC_RUNTIME_HOST: "0.0.0.0"
+      COSMIC_RUNTIME_PORT: "8765"
+      COSMIC_DATA_DIR: /workspace/data
+      COSMIC_MODEL_DIR: /workspace/models
+      COSMIC_OUTPUT_DIR: /workspace/outputs
+      COSMIC_NODE_NAME: runtime
+    ports:
+      - "18765:8765"
+    volumes:
+      - ./data:/workspace/data
+      - ./models:/workspace/models
+      - ./outputs:/workspace/outputs
+
+  # ----------------------------------------------------------------
+  # AI Viewer client
+  # ----------------------------------------------------------------
+  viewer:
+    build:
+      context: ../..
+      dockerfile: deploy/lambda/docker/Dockerfile.viewer
+    image: cosmic-engine/viewer:lambda
+    container_name: cosmic-viewer
+    depends_on:
+      - ray-head
+    environment:
+      COSMIC_ROLE: viewer
+      COSMIC_HEAD_IP: ray-head
+      COSMIC_RUNTIME_PORT: "8765"
+      COSMIC_OUTPUT_DIR: /workspace/outputs
+    volumes:
+      - ./outputs:/workspace/outputs

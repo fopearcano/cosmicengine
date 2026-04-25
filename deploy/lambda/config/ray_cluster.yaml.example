@@ -1,0 +1,91 @@
+# Ray cluster topology for a manually-provisioned CosmicEngine
+# deployment on Lambda Cloud.
+#
+# This is *documentation*, not a Ray autoscaler config. Lambda Cloud
+# does not (at the time of writing) provide a managed Ray autoscaler
+# integration; provision instances by hand (or with your own
+# Terraform) and use this file as the source of truth for which IP
+# is which.
+#
+# After provisioning, on each instance:
+#
+#   1. mount the shared data filesystem at /workspace
+#   2. install CosmicEngine: `pip install -e .[distributed]`
+#   3. source the matching env file from config/
+#   4. run the role-specific start script
+
+cluster_name: cosmic_engine_lambda
+
+head_node:
+  # Public or private IP — see lambda_cluster.env.example.
+  ip: "<HEAD_NODE_IP>"
+  instance_type: "gpu_1x_a10"
+  role: "head"
+  ports:
+    ray: 6379
+    ray_dashboard: 8265
+    ray_client: 10001
+    cosmic_runtime: 8765
+  setup:
+    - "sudo apt-get update && sudo apt-get install -y python3.11"
+    - "git clone https://github.com/<your-org>/cosmicengine.git /workspace/cosmicengine"
+    - "cd /workspace/cosmicengine && pip install -e .[distributed]"
+  start:
+    - "ray start --head --port=6379 --dashboard-host=0.0.0.0 --dashboard-port=8265"
+    - "bash deploy/lambda/scripts/start_runtime.sh"
+
+# Worker entries: duplicate this block per instance. The "role" field
+# is informational — every worker uses the same start script. Keep
+# AI workers (neural photon warp, density reconstruction) and render
+# workers (Gaussian splatting) on separate sub-pools so you can scale
+# them independently.
+worker_nodes:
+  - ip: "<AI_WORKER_1_IP>"
+    instance_type: "gpu_1x_a10"
+    role: "ai_worker"
+    setup:
+      - "git clone https://github.com/<your-org>/cosmicengine.git /workspace/cosmicengine"
+      - "cd /workspace/cosmicengine && pip install -e .[distributed]"
+    start:
+      - "ray start --address=<HEAD_NODE_IP>:6379"
+      - "bash deploy/lambda/scripts/start_worker.sh"
+
+  - ip: "<RENDER_WORKER_1_IP>"
+    instance_type: "gpu_1x_a10"
+    role: "render_worker"
+    setup:
+      - "git clone https://github.com/<your-org>/cosmicengine.git /workspace/cosmicengine"
+      - "cd /workspace/cosmicengine && pip install -e .[distributed]"
+    start:
+      - "ray start --address=<HEAD_NODE_IP>:6379"
+      - "bash deploy/lambda/scripts/start_worker.sh"
+
+# Optional: a training node. Only provision when you actually need
+# to retrain; the training image is large.
+training_node:
+  ip: "<TRAINING_NODE_IP>"
+  instance_type: "gpu_1x_a100"
+  role: "training"
+  setup:
+    - "git clone https://github.com/<your-org>/cosmicengine.git /workspace/cosmicengine"
+    - "cd /workspace/cosmicengine && pip install -e .[distributed]"
+  start:
+    - "ray start --address=<HEAD_NODE_IP>:6379"
+    - "bash deploy/lambda/scripts/start_training.sh"
+
+# Optional viewer instance — typically a small CPU VM that pulls
+# frames from the runtime server and writes them to shared storage.
+viewer_node:
+  ip: "<VIEWER_NODE_IP>"
+  instance_type: "cpu_1x"
+  role: "viewer"
+  start:
+    - "bash deploy/lambda/scripts/start_viewer.sh"
+
+# Persistent storage. Lambda's mounted filesystem is the simplest
+# option; alternatively use rsync to a shared object store. Either
+# way, every node should see the same /workspace tree.
+storage:
+  data_dir: /workspace/data
+  model_dir: /workspace/models
+  output_dir: /workspace/outputs

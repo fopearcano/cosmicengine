@@ -1,0 +1,57 @@
+# CosmicEngine — runtime / API node.
+#
+# Hosts the CosmicRuntime TCP server (default :8765). Lightweight by
+# design: no CUDA toolkit, no training extras. CUDA is *not* required
+# here — the runtime can serve scenes from CPU. Use the worker image
+# for GPU inference and the training image for PyTorch training.
+
+FROM python:3.11-slim AS base
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PIP_NO_CACHE_DIR=1 \
+    COSMIC_ROLE=runtime \
+    COSMIC_RUNTIME_HOST=0.0.0.0 \
+    COSMIC_RUNTIME_PORT=8765 \
+    COSMIC_DATA_DIR=/workspace/data \
+    COSMIC_MODEL_DIR=/workspace/models \
+    COSMIC_OUTPUT_DIR=/workspace/outputs
+
+# System deps: build-essential is needed for some numpy / wgpu wheels
+# on aarch64 hosts; libgl1 + libglib2.0-0 keep image-processing happy.
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        build-essential \
+        libgl1 \
+        libglib2.0-0 \
+        ca-certificates \
+        curl && \
+    rm -rf /var/lib/apt/lists/*
+
+WORKDIR /workspace
+
+# Copy only what we need to install the package (keeps the build
+# cache useful when only application files change).
+COPY pyproject.toml /workspace/pyproject.toml
+COPY engine /workspace/engine
+COPY apps /workspace/apps
+
+# Install CosmicEngine + the optional distributed extra.
+RUN pip install --upgrade pip && \
+    pip install -e .[distributed]
+
+# Application sources that live outside the package.
+COPY data /workspace/data
+COPY scripts /workspace/scripts
+COPY examples /workspace/examples
+COPY deploy/lambda/scripts /workspace/deploy/lambda/scripts
+
+RUN chmod +x /workspace/deploy/lambda/scripts/*.sh
+
+EXPOSE 8765 6379 8265 10001
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
+    CMD /workspace/deploy/lambda/scripts/healthcheck.sh || exit 1
+
+CMD ["/workspace/deploy/lambda/scripts/start_runtime.sh"]

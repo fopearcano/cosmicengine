@@ -1,0 +1,39 @@
+# CosmicEngine — AI Viewer client node.
+#
+# Pulls scene_state / reality_view messages from the runtime server
+# and post-processes / saves frames. No CUDA in this image: viewer
+# postprocess is CPU; GPU rendering happens on worker nodes.
+
+FROM python:3.11-slim AS base
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PIP_NO_CACHE_DIR=1 \
+    COSMIC_ROLE=viewer \
+    COSMIC_HEAD_IP=runtime \
+    COSMIC_RUNTIME_PORT=8765 \
+    COSMIC_OUTPUT_DIR=/workspace/outputs \
+    COSMIC_ENABLE_VIEWER=true
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        libgl1 \
+        libglib2.0-0 \
+        ca-certificates && \
+    rm -rf /var/lib/apt/lists/*
+
+WORKDIR /workspace
+
+COPY pyproject.toml /workspace/pyproject.toml
+COPY engine /workspace/engine
+COPY apps /workspace/apps
+
+RUN pip install --upgrade pip && \
+    pip install -e .
+
+COPY deploy/lambda/scripts /workspace/deploy/lambda/scripts
+
+RUN chmod +x /workspace/deploy/lambda/scripts/*.sh
+
+CMD ["/workspace/deploy/lambda/scripts/start_viewer.sh"]

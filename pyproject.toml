@@ -15,5 +15,10 @@ dependencies = [
     "torch>=2.0",
 ]
 
+[project.optional-dependencies]
+distributed = [
+    "ray[default]>=2.9",
+]
+
 [tool.setuptools.packages.find]
 where = ["engine", "apps"]
