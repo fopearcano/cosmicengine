@@ -50,11 +50,13 @@ def _weights() -> np.ndarray:
 
 
 def build() -> onnx.ModelProto:
+    # The leading dimension is symbolic ("batch") so this single graph
+    # serves both the scalar (1, 9) and batch (N, 9) inference paths.
     input_info = helper.make_tensor_value_info(
-        "input", TensorProto.FLOAT, [1, 9]
+        "input", TensorProto.FLOAT, ["batch", 9]
     )
     output_info = helper.make_tensor_value_info(
-        "output", TensorProto.FLOAT, [1, 7]
+        "output", TensorProto.FLOAT, ["batch", 7]
     )
     weights = numpy_helper.from_array(_weights(), name="W")
     bias = numpy_helper.from_array(np.zeros((7,), dtype=np.float32), name="b")

@@ -469,3 +469,37 @@ CosmicEngine is a data-driven, physics-grounded, AI-assisted cosmic perception e
 - Demo at `examples/neural_photon_warp_demo.py` renders three
   PPMs into `outputs/viewer/`: deterministic, neural (warp_factor=2),
   and neural-extreme (warp_factor=50).
+
+## Phase 22: Batch neural photon warp
+
+- `cosmic_engine.ai.BatchONNXPhotonWarpModel` runs **one ONNX
+  inference per frame** over a `(N, 9)` photon batch, where the
+  Phase 21 model ran one inference per sample. Construction raises
+  on missing/invalid models; `predict_batch` raises on bad input
+  shape, inference failure, or unexpected output shape — fallback
+  policy lives in the integration layer.
+- `cosmic_engine.perception.vectorized_ai_transform` provides
+  `build_photon_warp_input(batch, observer)` (packs to `(N, 9)`
+  with the documented schema), `validate_warp_output(out, n)`
+  (rejects non-`(N, 7)` arrays), and `apply_batch_ai_warp(batch,
+  observer, model)`. The latter routes silently to the deterministic
+  vectorized transform when the model is `None`, raises in any way,
+  or returns the wrong shape — so the engine never crashes on a bad
+  model.
+- `data/photon_warp_model.onnx` is now declared with a symbolic
+  `["batch", 9]` input dimension so the same file serves both the
+  scalar (Phase 21) and batch (Phase 22) inference paths. Existing
+  scalar tests still pass unchanged.
+- `apps/ai_viewer/NeuralWarpViewer` accepts a new
+  `batch_warp_model: BatchONNXPhotonWarpModel | None` argument; when
+  set, stars go through the batch AI path and galaxies stay on the
+  deterministic scalar path. Reports photon count, batch inference
+  time, and fallback-used flag per frame; mode is `"batch_neural"`.
+- Demo at `examples/batch_neural_photon_warp_demo.py` (50k
+  synthetic stars; deterministic vs. AI-batch vs. forced-fallback
+  timing) writes `outputs/viewer/output_batch_photon_warp.ppm`. On
+  this machine: 50k photons → 29 ms with the bundled model, ~10 ms
+  for deterministic, vs. ~4.5 s the per-sample Phase 21 path would
+  take (≈150× speedup).
+- Per-sample `ONNXPhotonWarpModel` is preserved for small fields and
+  for cases where one needs per-photon control flow.

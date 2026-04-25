@@ -17,10 +17,12 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from cosmic_engine.ai.base import AIWarpModel
+from cosmic_engine.ai.onnx_photon_warp_batch import BatchONNXPhotonWarpModel
 from cosmic_engine.core.object_types import CosmicObjectType
 from cosmic_engine.core.vector import Vector3
 from cosmic_engine.perception.observer import ObserverState
 from cosmic_engine.perception.transform import transform_photon_field
+from cosmic_engine.perception.vectorized_ai_transform import apply_batch_ai_warp
 from cosmic_engine.rendering.image_export import render_photon_field_to_ppm
 from cosmic_engine.rendering.photon_field import (
     PhotonSample,
@@ -30,6 +32,10 @@ from cosmic_engine.rendering.simple_camera import SimpleCamera
 from cosmic_engine.rendering.vectorized_galaxy_field import (
     GalaxyFieldBatch,
     build_galaxy_field_batch,
+)
+from cosmic_engine.rendering.vectorized_photon_field import (
+    build_star_photon_field_batch,
+    photon_batch_to_samples,
 )
 
 if TYPE_CHECKING:
@@ -72,21 +78,31 @@ class NeuralWarpViewer:
         camera: SimpleCamera,
         observer: ObserverState,
         warp_model: AIWarpModel | None = None,
+        batch_warp_model: BatchONNXPhotonWarpModel | None = None,
     ) -> None:
         self.runtime = runtime
         self.camera = camera
         self.observer = observer
         self.warp_model = warp_model
+        self.batch_warp_model = batch_warp_model
         self.frames_rendered: int = 0
         self.last_frame_path: str | None = None
         self.last_frame_time_seconds: float = 0.0
+        self.last_batch_inference_seconds: float = 0.0
         self.last_photon_count: int = 0
+        self.last_used_fallback: bool = False
 
     @property
     def mode(self) -> str:
-        return "neural" if self.warp_model is not None else "deterministic"
+        if self.batch_warp_model is not None:
+            return "batch_neural"
+        if self.warp_model is not None:
+            return "neural"
+        return "deterministic"
 
     def confidence(self) -> float:
+        if self.batch_warp_model is not None:
+            return float(self.batch_warp_model.confidence())
         if self.warp_model is None:
             return 1.0
         return float(self.warp_model.confidence())
@@ -109,14 +125,23 @@ class NeuralWarpViewer:
         output_path: str | None = None,
     ) -> list[PhotonSample]:
         """Build, warp, and (optionally) render one frame."""
-        all_samples = self._gather_samples()
+        if self.batch_warp_model is not None:
+            return self._run_once_batch(output_path)
+        return self._run_once_scalar(output_path)
 
+    def _run_once_scalar(
+        self,
+        output_path: str | None,
+    ) -> list[PhotonSample]:
+        all_samples = self._gather_samples()
         start = time.perf_counter()
         warped = transform_photon_field(
             all_samples, self.observer, ai_model=self.warp_model
         )
         self.last_frame_time_seconds = time.perf_counter() - start
         self.last_photon_count = len(warped)
+        self.last_batch_inference_seconds = 0.0
+        self.last_used_fallback = False
 
         if output_path is not None:
             Path(output_path).parent.mkdir(parents=True, exist_ok=True)
@@ -131,6 +156,65 @@ class NeuralWarpViewer:
             f"frame_time: {self.last_frame_time_seconds * 1000:7.2f} ms"
         )
         return warped
+
+    def _run_once_batch(
+        self,
+        output_path: str | None,
+    ) -> list[PhotonSample]:
+        active = self.runtime.select_active_objects(self.observer.position_m)
+        stars = [o for o in active if o.object_type is CosmicObjectType.STAR]
+        galaxies = [o for o in active if o.object_type is CosmicObjectType.GALAXY]
+
+        # AI batch path: stars only (vectorized). Galaxies stay deterministic.
+        star_batch = build_star_photon_field_batch(stars, self.camera) if stars else None
+
+        warped_star_samples: list[PhotonSample] = []
+        batch_seconds = 0.0
+        if star_batch is not None and len(star_batch) > 0:
+            error_before = self.batch_warp_model.last_error
+            t0 = time.perf_counter()
+            warped_batch = apply_batch_ai_warp(
+                star_batch, self.observer, self.batch_warp_model
+            )
+            batch_seconds = time.perf_counter() - t0
+            warped_star_samples = photon_batch_to_samples(warped_batch)
+            # apply_batch_ai_warp swallows model exceptions; if last_error
+            # got newly set during this call, the path fell back.
+            self.last_used_fallback = (
+                self.batch_warp_model.last_error is not None
+                and self.batch_warp_model.last_error != error_before
+            )
+        else:
+            self.last_used_fallback = False
+
+        # Galaxies: existing deterministic scalar path (keeps Phase 21 behavior).
+        galaxy_samples: list[PhotonSample] = []
+        if galaxies:
+            galaxy_batch = build_galaxy_field_batch(galaxies, self.camera)
+            galaxy_samples = _galaxy_batch_to_samples(galaxy_batch)
+            galaxy_samples = transform_photon_field(
+                galaxy_samples, self.observer, ai_model=None
+            )
+
+        all_samples = warped_star_samples + galaxy_samples
+        self.last_batch_inference_seconds = batch_seconds
+        self.last_frame_time_seconds = batch_seconds
+        self.last_photon_count = len(all_samples)
+
+        if output_path is not None:
+            Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+            render_photon_field_to_ppm(all_samples, self.camera, output_path)
+            self.last_frame_path = output_path
+        self.frames_rendered += 1
+
+        print(
+            f"warp mode: {self.mode:<13}  "
+            f"confidence: {self.confidence():.2f}  "
+            f"photons: {len(all_samples):>6}  "
+            f"batch_time: {batch_seconds * 1000:8.2f} ms  "
+            f"fallback: {'yes' if self.last_used_fallback else 'no'}"
+        )
+        return all_samples
 
     def run_loop(
         self,

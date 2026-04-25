@@ -21,10 +21,12 @@ from cosmic_engine.ai.density_onnx import ONNXDensityModel
 from cosmic_engine.ai.neural_warp import SimpleNeuralWarp
 from cosmic_engine.ai.onnx_model import ONNXModelWrapper
 from cosmic_engine.ai.onnx_photon_warp import ONNXPhotonWarpModel
+from cosmic_engine.ai.onnx_photon_warp_batch import BatchONNXPhotonWarpModel
 from cosmic_engine.ai.onnx_warp import ONNXWarpModel
 
 __all__ = [
     "AIWarpModel",
+    "BatchONNXPhotonWarpModel",
     "DensityFieldModel",
     "ONNXDensityModel",
     "ONNXModelWrapper",
