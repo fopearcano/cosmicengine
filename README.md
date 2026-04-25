@@ -336,3 +336,31 @@ CosmicEngine is a data-driven, physics-grounded, AI-assisted cosmic perception e
 - Demos at `examples/runtime_server_demo.py` (starts a server for
   three seconds) and `examples/runtime_client_demo.py` (connects and
   prints a few `SceneState` messages).
+
+## Phase 18: AI Viewer client
+
+- First standalone viewer client lives outside the engine package at
+  `apps/ai_viewer/` (also discoverable as `import ai_viewer` after
+  `pip install -e .`). `AIViewerConfig` (validated host / port /
+  dimensions / output directory) configures the client; `RuntimeClient`
+  speaks the same newline-delimited JSON protocol as the runtime
+  server (`receive_message`, `receive_scene_state`, `receive_frame`).
+- `FrameBuffer` parses plain (P3) PPM bytes, round-trips via
+  `save_ppm`, and renders a `to_ascii_preview(max_width)` for
+  terminal-friendly display. NumPy-only; no Pillow, no GUI.
+- `AIViewer` orchestrates the loop: `run_once` processes one message;
+  `run_loop(max_frames)` drains a bounded number of messages with
+  connect/disconnect bookkeeping; `render_scene_state_text` formats
+  a `SceneState` as a short readable block; `optional_ai_postprocess`
+  applies a deterministic gamma-0.8 brightness curve as a placeholder
+  for a future neural step (clearly labeled — **not real AI yet**).
+- Frames are written into `config.output_directory` (default
+  `outputs/viewer/`); `last_frame_path`, `frames_received`, and
+  `scene_states_received` track progress.
+- No GUI framework, no GPU, no Unreal — designed to be replaced by a
+  future Vulkan / WebGPU / neural renderer without touching any other
+  module.
+- Demo at `examples/ai_viewer_demo.py` spins up a `RuntimeServer` in
+  the same process, drains a few `SceneState` messages, broadcasts
+  one PPM frame via `broadcast_frame`, saves it locally, and prints
+  the ASCII preview.

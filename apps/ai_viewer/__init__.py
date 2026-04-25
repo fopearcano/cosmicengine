@@ -1,0 +1,19 @@
+"""AI Viewer client for CosmicEngine.
+
+A minimal standalone client that consumes the runtime server's
+newline-delimited JSON stream and renders SceneState messages and
+PPM frames locally. No GUI, no GPU, no Unreal. Designed to be
+replaced later by a Vulkan / WebGPU / neural renderer.
+"""
+
+from ai_viewer.client import RuntimeClient
+from ai_viewer.config import AIViewerConfig
+from ai_viewer.frame_buffer import FrameBuffer
+from ai_viewer.viewer import AIViewer
+
+__all__ = [
+    "AIViewer",
+    "AIViewerConfig",
+    "FrameBuffer",
+    "RuntimeClient",
+]
