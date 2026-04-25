@@ -678,3 +678,50 @@ CosmicEngine is a data-driven, physics-grounded, AI-assisted cosmic perception e
   back to CPU for both runs (~3.7 s for 200k points / 256×256). On
   a host with a real WebGPU adapter the second run uses the GPU
   pipeline.
+
+## Phase 28: Relativistic rendering
+
+- New `apps/ai_viewer/neural_field/gr/` package implements
+  weak-field gravitational lensing and a Schwarzschild-style black
+  hole — physically-inspired distortion approximations, **not**
+  full GR ray tracing:
+  - `compute_deflection_angle(impact_parameter_m, mass_kg)` returns
+    `α = 4GM/(c²b)` capped at 85° to keep the resulting 2D rotation
+    well-defined.
+  - `apply_lensing(direction, lens_position, observer_position,
+    mass_kg)` rotates a unit ray toward the lens by α. Rays passing
+    behind the observer or directly through the lens pass through
+    unchanged.
+  - `apply_lensing_to_points(points, lens, mass, observer)` lenses
+    every Gaussian in a list, preserving each point's distance to
+    the observer and recording `metadata["lensed"]`.
+  - `BlackHole(position, mass_kg)` exposes
+    `schwarzschild_radius()`, `is_inside_event_horizon(point)`, and
+    `deflection_strength(distance)` (saturates at the horizon).
+    `apply_black_hole_to_points` removes inside-horizon points and
+    lenses the rest.
+- WGSL shader at
+  `apps/ai_viewer/neural_field/gpu/shaders/gr_splat.wgsl` is a
+  superset of `splat.wgsl`: vertex stage applies the same
+  weak-field bend toward a `bh_position` uniform; fragment stage
+  outputs pure black for points inside the event horizon. With
+  `enable_lensing=0` the shader behaves identically to
+  `splat.wgsl`.
+- `WebGPUSplatRenderer.enable_gr_effects(black_hole, enable_lensing)`
+  swaps the shader on the next render and wires GR uniforms into
+  the same uniform buffer (now 7 × vec4, still padded to 256 bytes).
+- `AIViewerConfig` adds `enable_gr: bool = False`,
+  `black_hole_mass_kg: float | None = None`, and
+  `black_hole_position: tuple[float, float, float] | None = None`,
+  validated for positive mass and 3-tuple position.
+- All math is bounded to avoid NaNs at the horizon: deflection
+  angle clamps at 85°, deflection strength saturates at `1e6`,
+  lensing skips coincident-with-observer / behind-observer cases,
+  inside-horizon points are removed before lensing.
+- Demo at `examples/black_hole_lensing_demo.py` renders a 20k-galaxy
+  field in three modes (no-GR / weak lensing / strong black hole)
+  with deliberately oversized masses for visibility — physical
+  supermassive black holes produce sub-pixel bends at galaxy-cluster
+  scales. The resulting PPMs differ dramatically: 1.1k → 21k →
+  20.9k visible pixels, with the black-hole mode redistributing
+  the field around the lens.

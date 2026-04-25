@@ -26,8 +26,8 @@ from cosmic_engine.rendering.simple_camera import SimpleCamera
 
 
 _SHADER_PATH = Path(__file__).parent / "shaders" / "splat.wgsl"
-# 5 vec4 fields × 16 bytes = 80 bytes; pad to 256 for typical WebGPU
-# uniform-buffer alignment requirements.
+_GR_SHADER_PATH = Path(__file__).parent / "shaders" / "gr_splat.wgsl"
+# Enough room for the GR shader's 7 vec4 uniform block, padded to 256.
 _UNIFORM_SIZE_BYTES: int = 256
 
 
@@ -51,6 +51,31 @@ class WebGPUSplatRenderer:
         self._readback_buffer = None
         self._shader_module = None
         self._pipeline_initialized = False
+        # GR state (Phase 28)
+        self._black_hole = None
+        self._enable_lensing: bool = False
+        self._use_gr_shader: bool = False
+
+    def enable_gr_effects(
+        self,
+        black_hole=None,
+        enable_lensing: bool = True,
+    ) -> None:
+        """Wire a black hole + lensing toggle into the render pass.
+
+        Pass ``black_hole=None`` and ``enable_lensing=False`` to revert
+        to the plain Phase 27 splat shader. Reconfiguring requires
+        re-initializing the pipeline, so the flag is captured before
+        the next ``render`` call.
+        """
+        self._black_hole = black_hole
+        self._enable_lensing = bool(enable_lensing)
+        self._use_gr_shader = (
+            black_hole is not None or self._enable_lensing
+        )
+        # Force pipeline recreation so the right shader is selected.
+        self._pipeline_initialized = False
+        self._shader_module = None
 
     # --- pipeline setup --------------------------------------------------
 
@@ -63,7 +88,8 @@ class WebGPUSplatRenderer:
         import wgpu
 
         wgpu_dev = self.device.device
-        shader_source = _SHADER_PATH.read_text(encoding="utf-8")
+        shader_path = _GR_SHADER_PATH if self._use_gr_shader else _SHADER_PATH
+        shader_source = shader_path.read_text(encoding="utf-8")
         self._shader_module = wgpu_dev.create_shader_module(code=shader_source)
 
         self._uniform_buffer = wgpu_dev.create_buffer(
@@ -186,8 +212,40 @@ class WebGPUSplatRenderer:
             [beta, warp, enable_warp, enable_warp], dtype=np.float32
         )
 
+        # GR uniforms (zero-filled when GR is off so the GR shader still
+        # works as a no-op).
+        from cosmic_engine.physics.nbody import GRAVITATIONAL_CONSTANT
+        from cosmic_engine.core.units import SPEED_OF_LIGHT_M_S
+
+        if self._black_hole is not None:
+            bh_pos_v4 = np.array(
+                [
+                    self._black_hole.position[0],
+                    self._black_hole.position[1],
+                    self._black_hole.position[2],
+                    self._black_hole.mass_kg,
+                ],
+                dtype=np.float32,
+            )
+            r_s = self._black_hole.schwarzschild_radius()
+        else:
+            bh_pos_v4 = np.zeros(4, dtype=np.float32)
+            r_s = 0.0
+        deflection_scale = (
+            4.0 * GRAVITATIONAL_CONSTANT / (SPEED_OF_LIGHT_M_S * SPEED_OF_LIGHT_M_S)
+        )
+        bh_params_v4 = np.array(
+            [
+                1.0 if self._enable_lensing else 0.0,
+                float(r_s),
+                float(deflection_scale),
+                0.0,
+            ],
+            dtype=np.float32,
+        )
+
         payload = np.concatenate(
-            [cam_pos, forward_v4, up_v4, right_v4, params]
+            [cam_pos, forward_v4, up_v4, right_v4, params, bh_pos_v4, bh_params_v4]
         ).astype(np.float32)
         # Pad to the uniform buffer size.
         padded = np.zeros(_UNIFORM_SIZE_BYTES // 4, dtype=np.float32)

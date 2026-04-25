@@ -39,6 +39,10 @@ class AIViewerConfig:
     gpu_backend: str = "auto"
     enable_shader_warp: bool = True
 
+    enable_gr: bool = False
+    black_hole_mass_kg: float | None = None
+    black_hole_position: tuple[float, float, float] | None = None
+
     def validate(self) -> None:
         """Raise :class:`ValueError` if any field is invalid."""
         if not self.server_host:
@@ -84,3 +88,13 @@ class AIViewerConfig:
                 f"gpu_backend must be 'auto', 'webgpu', or 'cpu'; "
                 f"got {self.gpu_backend!r}"
             )
+        if self.enable_gr:
+            if self.black_hole_mass_kg is not None and self.black_hole_mass_kg <= 0.0:
+                raise ValueError("black_hole_mass_kg must be positive when set")
+            if (
+                self.black_hole_position is not None
+                and len(self.black_hole_position) != 3
+            ):
+                raise ValueError(
+                    "black_hole_position must be a 3-tuple of floats"
+                )

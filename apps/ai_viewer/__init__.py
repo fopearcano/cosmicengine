@@ -10,14 +10,19 @@ from ai_viewer.client import RuntimeClient
 from ai_viewer.config import AIViewerConfig
 from ai_viewer.frame_buffer import FrameBuffer
 from ai_viewer.neural_field import (
+    BlackHole,
     CPUSplatFallback,
     GPUDevice,
     GPUGaussianBuffer,
     GaussianPoint,
     GaussianSplatPipeline,
     GaussianSplatRenderer,
+    apply_black_hole_to_points,
+    apply_lensing,
+    apply_lensing_to_points,
     build_gaussian_field_from_density,
     build_gaussian_field_from_galaxy_batch,
+    compute_deflection_angle,
     warp_gaussian_field,
     warp_gaussian_point,
 )
@@ -38,6 +43,7 @@ from ai_viewer.window import ViewerWindow
 __all__ = [
     "AIViewer",
     "AIViewerConfig",
+    "BlackHole",
     "BrightnessProcessor",
     "ColorShiftProcessor",
     "CompositeProcessor",
@@ -55,9 +61,13 @@ __all__ = [
     "RuntimeClient",
     "SafeProcessor",
     "ViewerWindow",
+    "apply_black_hole_to_points",
+    "apply_lensing",
+    "apply_lensing_to_points",
     "build_gaussian_field_from_density",
     "build_gaussian_field_from_galaxy_batch",
     "build_postprocessor_from_config",
+    "compute_deflection_angle",
     "warp_gaussian_field",
     "warp_gaussian_point",
 ]

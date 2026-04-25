@@ -21,17 +21,29 @@ from ai_viewer.neural_field.gpu import (
     GPUGaussianBuffer,
     GaussianSplatPipeline,
 )
+from ai_viewer.neural_field.gr import (
+    BlackHole,
+    apply_black_hole_to_points,
+    apply_lensing,
+    apply_lensing_to_points,
+    compute_deflection_angle,
+)
 from ai_viewer.neural_field.splat_renderer import GaussianSplatRenderer
 
 __all__ = [
+    "BlackHole",
     "CPUSplatFallback",
     "GPUDevice",
     "GPUGaussianBuffer",
     "GaussianPoint",
     "GaussianSplatPipeline",
     "GaussianSplatRenderer",
+    "apply_black_hole_to_points",
+    "apply_lensing",
+    "apply_lensing_to_points",
     "build_gaussian_field_from_density",
     "build_gaussian_field_from_galaxy_batch",
+    "compute_deflection_angle",
     "warp_gaussian_field",
     "warp_gaussian_point",
 ]
